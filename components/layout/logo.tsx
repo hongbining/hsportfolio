@@ -1,11 +1,13 @@
+import Link from "next/link"
+
 import { siteConfig } from "@/lib/site-config"
 
-/** Wordmark that links back to the top of the page. */
+/** Wordmark that links back to the home page. */
 export function Logo() {
   return (
-    <a
-      href="#top"
-      aria-label={`${siteConfig.name}, 맨 위로`}
+    <Link
+      href="/"
+      aria-label={`${siteConfig.name}, 홈으로`}
       className="inline-flex items-center gap-2 rounded-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
     >
       <span
@@ -17,6 +19,6 @@ export function Logo() {
       <span className="text-sm font-semibold tracking-tight">
         {siteConfig.name}
       </span>
-    </a>
+    </Link>
   )
 }

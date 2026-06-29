@@ -9,13 +9,13 @@ export default function NotFound() {
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 py-24 text-center">
         <p className="font-mono text-sm text-muted-foreground">404</p>
         <h1 className="font-heading text-3xl font-semibold tracking-tight sm:text-4xl">
-          Page not found
+          페이지를 찾을 수 없습니다
         </h1>
         <p className="max-w-md text-muted-foreground text-pretty">
-          The page you’re looking for doesn’t exist or may have moved.
+          요청하신 페이지가 존재하지 않거나 이동되었습니다.
         </p>
         <Button asChild size="xl" className="mt-2">
-          <Link href="/">Back to home</Link>
+          <Link href="/">홈으로 돌아가기</Link>
         </Button>
       </div>
     </Container>

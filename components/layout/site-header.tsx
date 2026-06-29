@@ -20,7 +20,7 @@ export function SiteHeader() {
             />
             <ThemeToggle />
             <Button asChild size="sm" className="ml-1 hidden md:inline-flex">
-              <a href="#contact">Get in touch</a>
+              <a href="#contact">연락하기</a>
             </Button>
             <MobileNav />
           </div>

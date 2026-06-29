@@ -5,7 +5,7 @@ export function Logo() {
   return (
     <a
       href="#top"
-      aria-label={`${siteConfig.name}, back to top`}
+      aria-label={`${siteConfig.name}, 맨 위로`}
       className="inline-flex items-center gap-2 rounded-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
     >
       <span

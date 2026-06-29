@@ -1,92 +1,92 @@
 {
   "id": "technical-decisions",
-  "title": "Technical Decisions",
-  "summary": "The nine load-bearing architecture decisions behind KH Wholesale, in ADR form: what each one was for, what we chose and why, and what we deliberately rejected. The throughline is that these choices were designed to reinforce each other rather than stand alone.",
+  "title": "기술적 의사결정",
+  "summary": "KH Wholesale를 떠받친 아홉 가지 핵심 아키텍처 의사결정을 ADR 형식으로 정리했습니다. 각 결정이 무엇을 위한 것이었는지, 무엇을 왜 선택했는지, 그리고 무엇을 의도적으로 배제했는지를 담았습니다. 관통하는 주제는 이 선택들이 개별적으로 동작하기보다 서로를 강화하도록 설계되었다는 점입니다.",
   "blocks": [
     {
       "kind": "lead",
-      "text": "Every meaningful property of the platform — correctness of money, integrity of inventory, auditability of approvals, and the ability for six engineers to operate it — traces back to a small set of decisions that were made deliberately and made to fit together."
+      "text": "이 플랫폼의 의미 있는 속성 — 금액의 정확성, 재고의 무결성, 승인의 감사 가능성, 그리고 엔지니어 여섯 명이 운영할 수 있는 능력 — 은 모두 의도적으로 내려졌고 서로 맞물리도록 설계된 소수의 의사결정으로 거슬러 올라갑니다."
     },
     {
       "kind": "prose",
       "paragraphs": [
-        "I treat this section as the architecture's load-bearing wall. There were hundreds of small choices over the ~14 months, but nine decisions account for nearly all of the system's behavior under load, under failure, and under audit. I'm documenting them ADR-style — context, the choice and its rationale, and the alternatives I rejected — because the rejections are as informative as the selections. A decision you can't defend against its alternative isn't a decision; it's a default.",
-        "The most important thing about this set is that the decisions are not independent. They were chosen as a system. The modular monolith is what makes the transactional outbox cheap, because the outbox write and the business write share one Postgres transaction — there is no distributed commit to coordinate. The outbox is what makes idempotent consumers tractable, because every side effect downstream of an order or shipment is driven from an event with a stable id. The FulfillmentGroup split is the spine that ordering, fulfillment, and settlement all hang off of, which is why the same boundary that suppliers act on is also the boundary we settle and audit on. Integer-KRW money with immutable snapshots is what lets settlement be deterministic and disputes fall ~70%. And DB-authoritative inventory reservation is what took oversell incidents from ~12/month to 0 — but only because the monolith let us put the reservation confirm and the order persistence in the same transaction.",
-        "Put differently: each decision below makes at least one other decision simpler or safer. That mutual reinforcement is why a Postgres-backed monolith comfortably carried ~5,200 active buyers, ~480 suppliers, ~140,000 SKUs, and a sustained 9,000 orders/day peak with headroom — boring tech, chosen on purpose, composed carefully."
+        "저는 이 섹션을 아키텍처의 내력벽(耐力壁)으로 여깁니다. 약 14개월 동안 수백 개의 작은 선택이 있었지만, 부하 상황, 장애 상황, 그리고 감사 상황에서 시스템이 보이는 거의 모든 동작은 아홉 개의 의사결정으로 설명됩니다. 저는 이들을 ADR 형식 — 맥락, 선택과 그 근거, 그리고 제가 배제한 대안 — 으로 문서화하는데, 배제한 선택지가 채택한 선택지만큼이나 많은 것을 알려주기 때문입니다. 대안에 맞서 방어할 수 없는 결정은 결정이 아니라 그저 기본값일 뿐입니다.",
+        "이 묶음에서 가장 중요한 점은 의사결정들이 서로 독립적이지 않다는 것입니다. 이들은 하나의 시스템으로서 선택되었습니다. 모듈러 모놀리스(modular monolith)는 트랜잭셔널 아웃박스(transactional outbox)를 저렴하게 만들어 주는데, 아웃박스 쓰기와 비즈니스 쓰기가 하나의 Postgres 트랜잭션을 공유하므로 조율해야 할 분산 커밋이 없기 때문입니다. 아웃박스는 멱등(idempotent) 컨슈머를 다룰 만하게 만들어 주는데, 주문이나 출고 하위의 모든 부수 효과가 안정적인 id를 가진 이벤트로부터 구동되기 때문입니다. FulfillmentGroup 분할은 주문, 풀필먼트(이행), 정산이 모두 매달리는 척추이며, 그래서 공급사가 행위하는 그 경계가 곧 우리가 정산하고 감사하는 경계가 됩니다. 불변 스냅샷을 동반한 정수 KRW 금액은 정산을 결정론적으로 만들어 분쟁을 약 70% 줄였습니다. 그리고 DB가 권위를 갖는 재고 예약(reservation)은 오버셀(초과 판매) 사고를 월 약 12건에서 0건으로 줄였습니다 — 다만 이는 모놀리스 덕분에 예약 확정(hard-confirm)과 주문 영속화를 같은 트랜잭션에 둘 수 있었기 때문에 가능했습니다.",
+        "달리 말하면, 아래의 각 결정은 적어도 하나 이상의 다른 결정을 더 단순하거나 더 안전하게 만듭니다. 이 상호 강화야말로 Postgres 기반 모놀리스가 약 5,200명의 활성 구매자, 약 480개 공급사, 약 140,000개 SKU, 그리고 지속적인 일 9,000건 주문 피크를 여유를 두고 무리 없이 감당해낸 이유입니다 — 지루한 기술을 의도적으로 골라, 세심하게 조합한 것입니다."
       ]
     },
     {
       "kind": "table",
-      "caption": "Architecture Decision Record — the canonical nine decisions for KH Wholesale.",
-      "columns": ["Decision", "Context", "Choice & rationale", "Alternatives rejected"],
+      "caption": "아키텍처 의사결정 기록(ADR) — KH Wholesale의 표준적인 아홉 가지 결정.",
+      "columns": ["의사결정", "맥락", "선택과 근거", "배제한 대안"],
       "rows": [
         [
-          "Modular monolith over microservices",
-          "A 6-engineer team (author as lead) building ordering, fulfillment, settlement, catalog, identity, and supplier onboarding at once. The hardest invariants — money and inventory — span contexts and demand transactional integrity.",
-          "One NestJS deployable with strict bounded-context modules (Identity, Catalog, Pricing, Ordering, Inventory, Fulfillment, Supplier, Settlement, Notifications) plus a small set of async workers. Cross-context writes can share a single Postgres transaction, so the outbox and inventory reservation get atomicity for free. Simpler ops: one deploy, one set of dashboards, one place to reason about a request. We enforce module boundaries in code, not network calls, so refactoring a boundary is a compiler problem, not a versioned-API migration.",
-          "Microservices per context — rejected: distributed transactions or sagas for ordering+inventory+settlement would have dominated a 6-person team's time; per-service deploy/observability/on-call overhead bought us nothing at this scale. Cost we accepted: module discipline must be enforced by review and lint, and the whole monolith shares one deploy and one scaling unit."
+          "마이크로서비스 대신 모듈러 모놀리스",
+          "엔지니어 6명(저자가 리드) 팀이 주문, 풀필먼트, 정산, 카탈로그, 신원(identity), 공급사 온보딩을 동시에 구축했습니다. 가장 어려운 불변식 — 금액과 재고 — 은 여러 컨텍스트에 걸쳐 있으며 트랜잭션 무결성을 요구합니다.",
+          "엄격한 바운디드 컨텍스트(bounded context) 모듈(Identity, Catalog, Pricing, Ordering, Inventory, Fulfillment, Supplier, Settlement, Notifications)과 소수의 비동기 워커로 구성된 하나의 NestJS 배포 단위. 컨텍스트 간 쓰기가 하나의 Postgres 트랜잭션을 공유할 수 있어, 아웃박스와 재고 예약이 원자성을 공짜로 얻습니다. 운영도 더 단순합니다: 하나의 배포, 하나의 대시보드 묶음, 요청을 추론할 하나의 장소. 모듈 경계를 네트워크 호출이 아니라 코드로 강제하므로, 경계를 리팩터링하는 일은 버전 관리되는 API 마이그레이션이 아니라 컴파일러 문제입니다.",
+          "컨텍스트별 마이크로서비스 — 배제: 주문+재고+정산을 위한 분산 트랜잭션이나 사가(saga)는 6인 팀의 시간을 잠식했을 것이고, 서비스별 배포/관측/온콜 부담은 이 규모에서 아무런 이득도 주지 못했습니다. 우리가 감수한 비용: 모듈 규율을 리뷰와 린트로 강제해야 하며, 모놀리스 전체가 하나의 배포 단위이자 하나의 스케일링 단위를 공유합니다."
         ],
         [
-          "Transactional outbox + idempotent SQS consumers",
-          "Placing an order must both persist Order + FulfillmentGroups and reliably publish OrderPlaced (and similarly for ShipmentDelivered, etc.). A naive dual write to Postgres-then-SNS can succeed on one and fail on the other, dropping or duplicating events.",
-          "Writes to domain tables and an OutboxEvent row happen in the same DB transaction; a relay publishes outbox rows to SNS/SQS at-least-once. Consumers (search-projection, settlement, notifications) are idempotent, keyed by a stable event/message id with a processed-events dedup table. This gives us exactly-the-effect-once semantics on top of at-least-once delivery, without a distributed commit. Directly fixed incidents (B) double settlement and (E) SQS redelivery side effects.",
-          "Dual writes (Postgres then publish) — rejected: no atomicity, silent divergence under partial failure. CDC/Debezium off the WAL — rejected for now: extra infrastructure and operational surface a small team didn't want; the outbox keeps publishing in-transaction and explicit. Cost we accepted: the app must write and relay the outbox table, and consumers must be written to be idempotent rather than assuming once-only delivery."
+          "트랜잭셔널 아웃박스 + 멱등 SQS 컨슈머",
+          "주문을 넣을 때 Order + FulfillmentGroups를 영속화하는 동시에 OrderPlaced를 (그리고 ShipmentDelivered 등도 마찬가지로) 신뢰성 있게 발행해야 합니다. Postgres에 쓴 뒤 SNS로 보내는 순진한 이중 쓰기는 한쪽은 성공하고 다른 쪽은 실패하여 이벤트를 누락하거나 중복시킬 수 있습니다.",
+          "도메인 테이블 쓰기와 OutboxEvent 행 쓰기가 같은 DB 트랜잭션에서 일어나고, 릴레이가 아웃박스 행을 SNS/SQS로 at-least-once로 발행합니다. 컨슈머(search-projection, settlement, notifications)는 멱등하며, 안정적인 이벤트/메시지 id를 키로 하고 processed-events 중복 제거 테이블을 사용합니다. 이로써 분산 커밋 없이 at-least-once 전달 위에 '효과는 정확히 한 번(exactly-the-effect-once)' 의미를 얻습니다. 사고 (B) 이중 정산과 (E) SQS 재전송 부수 효과를 직접적으로 바로잡았습니다.",
+          "이중 쓰기(Postgres 후 발행) — 배제: 원자성이 없고 부분 실패 시 조용히 어긋납니다. WAL을 읽는 CDC/Debezium — 일단 배제: 작은 팀이 원치 않는 추가 인프라와 운영 표면이며, 아웃박스는 트랜잭션 내에서 명시적으로 발행을 유지합니다. 우리가 감수한 비용: 애플리케이션이 아웃박스 테이블에 쓰고 릴레이해야 하며, 컨슈머는 한 번만 전달된다고 가정하는 대신 멱등하게 작성되어야 합니다."
         ],
         [
-          "FulfillmentGroup split model (per-supplier sub-orders)",
-          "A buyer places one Cart spanning multiple suppliers, but suppliers accept/reject, ship, and get paid independently. We needed one boundary that ordering, fulfillment, and settlement could all share.",
-          "On place, the Order splits into one FulfillmentGroup per supplier; OrderLines belong to a group; the group is the unit suppliers act on and the unit we settle. Order status is derived from its groups (PLACED → PARTIALLY_* / COMPLETED / CANCELLED), so partial acceptance, partial shipment, and per-supplier cancellation are first-class, not special cases. Settlement, payouts, and ledger entries key off the group, so 'who gets paid for what' is unambiguous.",
-          "A flat order with mixed-supplier lines and no sub-order entity — rejected: every partial state (one supplier rejects, another ships) becomes a bespoke flag, and settlement can't cleanly attribute money. Modeling the split late — rejected by hindsight; retrofitting it would have touched ordering, fulfillment, and settlement at once. Cost we accepted: more entities and a derived order-status computation to keep correct."
+          "FulfillmentGroup 분할 모델(공급사별 하위 주문)",
+          "구매자는 여러 공급사에 걸친 하나의 Cart로 주문하지만, 공급사는 독립적으로 수락/거절하고, 출고하고, 대금을 받습니다. 주문, 풀필먼트, 정산이 모두 공유할 수 있는 하나의 경계가 필요했습니다.",
+          "주문 시 Order는 공급사마다 하나의 FulfillmentGroup으로 분할됩니다. OrderLine은 그룹에 속하고, 그룹은 공급사가 행위하는 단위이자 우리가 정산하는 단위입니다. 주문 상태는 그 그룹들로부터 파생됩니다(PLACED → PARTIALLY_* / COMPLETED / CANCELLED). 그래서 부분 수락, 부분 출고, 공급사별 취소가 특수 케이스가 아니라 일급 개념이 됩니다. 정산, 지급(payout), 원장 기입(ledger entry)이 그룹을 키로 삼으므로 '누가 무엇에 대해 대금을 받는가'가 명확합니다.",
+          "혼합 공급사 라인을 가진 평면적 주문에 하위 주문 엔티티가 없는 모델 — 배제: 모든 부분 상태(한 공급사는 거절하고 다른 공급사는 출고)가 임시방편 플래그가 되고, 정산이 금액을 깔끔하게 귀속할 수 없습니다. 분할을 늦게 모델링하는 것 — 돌이켜보면 배제: 나중에 끼워 넣으려면 주문, 풀필먼트, 정산을 한꺼번에 건드려야 했을 것입니다. 우리가 감수한 비용: 더 많은 엔티티와, 정확하게 유지해야 하는 파생 주문 상태 계산."
         ],
         [
-          "Two-phase inventory reservation: Redis soft-hold + Postgres hard-confirm",
-          "At checkout we must hold stock for a hot SKU long enough to place the order, but the database must remain the authority on what's actually available so we never oversell under concurrency.",
-          "Phase 1: a Redis soft-hold with a TTL reserves units optimistically at cart/checkout, cheap and expiring on its own if the order never completes. Phase 2 (on supplier ACCEPT/allocation): a hard confirm under SELECT ... FOR UPDATE on the InventoryItem row, decrementing available atomically with a CHECK (available >= 0) and a version column. Locks are acquired in sorted sku_id order with bounded retry on deadlock (40P01). This took oversell from ~12/month to 0 (incident A) and eliminated multi-line deadlocks (incident D).",
-          "App-level availability check then write — rejected: the canonical check-then-write race that caused overselling. Redis as the sole source of truth — rejected: fast but not durable or transactional with the order; we keep Redis as a soft-hold only and let Postgres be authoritative. Cost we accepted: write hotspots and a throughput ceiling on the most popular SKUs, plus reservation-expiry sweeping to reclaim abandoned holds."
+          "2단계 재고 예약: Redis 소프트 홀드 + Postgres 하드 컨펌",
+          "체크아웃 시 인기 SKU의 재고를 주문을 넣을 만큼 충분히 잡아두어야 하지만, 동시성 하에서 절대 오버셀하지 않도록 실제 가용 수량에 대한 권위는 데이터베이스가 유지해야 합니다.",
+          "1단계: TTL을 가진 Redis 소프트 홀드(soft-hold)가 카트/체크아웃 시점에 낙관적으로 수량을 예약하며, 저렴하고 주문이 완료되지 않으면 스스로 만료됩니다. 2단계(공급사 ACCEPT/할당 시점): InventoryItem 행에 SELECT ... FOR UPDATE를 걸어 하드 컨펌(확정)하고, CHECK (available >= 0)와 version 컬럼과 함께 available을 원자적으로 감소시킵니다. 락은 정렬된 sku_id 순서로 획득하며 데드락(deadlock, 40P01) 시 횟수가 제한된 재시도를 합니다. 이로써 오버셀이 월 약 12건에서 0건으로(사고 A) 줄었고 다중 라인 데드락이 제거되었습니다(사고 D).",
+          "앱 레벨에서 가용성을 확인한 뒤 쓰기 — 배제: 오버셀을 유발한 전형적인 확인-후-쓰기 경합입니다. Redis를 단일 진실 공급원으로 — 배제: 빠르지만 내구성이 없고 주문과 트랜잭션을 함께 묶을 수 없습니다. Redis는 소프트 홀드로만 두고 Postgres가 권위를 갖게 합니다. 우리가 감수한 비용: 가장 인기 있는 SKU에서의 쓰기 핫스팟과 처리량 상한, 그리고 버려진 홀드를 회수하기 위한 예약 만료 스위핑."
         ],
         [
-          "Money as integer KRW + immutable price snapshots",
-          "GMV is ~38B KRW/month across negotiated ContractPrices, price lists, promotions, and fees. KRW has no minor units, and floating-point or re-derived prices are a direct path to settlement disputes.",
-          "All amounts are integer KRW stored as bigint; all money math is integer. The agreed price (ContractPrice/PriceList) is snapshotted onto OrderLine at placement and is immutable thereafter, so what the buyer agreed to is exactly what we ship and settle. Rounding is applied only at fee calculation, under one documented rule. This determinism is the main reason settlement disputes fell ~70% (and underpins fix F for rounding/timezone mismatches).",
-          "Floating-point money or a generic Decimal carried loosely through the stack — rejected: rounding drift and non-reproducible totals. Re-deriving prices at settlement from live price lists — rejected: prices change, and the buyer must be settled on the price they were quoted, not today's. Cost we accepted: more storage for snapshots and the discipline of never mutating a placed OrderLine's price."
+          "정수 KRW 금액 + 불변 가격 스냅샷",
+          "GMV는 협상된 ContractPrice, 가격표, 프로모션, 수수료에 걸쳐 월 약 38B KRW입니다. KRW에는 소수 단위가 없으며, 부동소수점이나 재계산된 가격은 정산 분쟁으로 가는 직통로입니다.",
+          "모든 금액은 정수 KRW이며 bigint로 저장하고, 모든 금액 연산은 정수 연산입니다. 합의된 가격(ContractPrice/PriceList)은 주문 시점에 OrderLine으로 스냅샷되어 이후 불변이므로, 구매자가 합의한 것이 곧 우리가 출고하고 정산하는 것입니다. 반올림은 문서화된 단일 규칙에 따라 수수료 계산 시에만 적용됩니다. 이 결정론은 정산 분쟁이 약 70% 줄어든 주된 이유이며(반올림/시간대 불일치에 대한 수정 F의 토대이기도 합니다).",
+          "부동소수점 금액이나 스택 전반에 느슨하게 운반되는 범용 Decimal — 배제: 반올림 표류와 재현 불가능한 합계. 정산 시점에 라이브 가격표로부터 가격을 재계산 — 배제: 가격은 변하고, 구매자는 오늘의 가격이 아니라 견적받은 가격으로 정산되어야 합니다. 우리가 감수한 비용: 스냅샷을 위한 추가 저장 공간과, 이미 주문된 OrderLine의 가격을 절대 변형하지 않는 규율."
         ],
         [
-          "Explicit, table-driven state machines with DB-enforced transitions",
-          "FulfillmentGroup, Shipment, and SupplierApplication each move through many states with legal and illegal transitions. Implicit status updates scattered across handlers are how you end up in impossible states.",
-          "Each lifecycle is an explicit state machine: FulfillmentGroup (AWAITING_SUPPLIER → ACCEPTED → FULFILLING → SHIPPED → DELIVERED → SETTLED, branches REJECTED/CANCELLED/PARTIALLY_SHIPPED), Shipment (CREATED → ALLOCATED → PICKING → PACKED → DISPATCHED → IN_TRANSIT → DELIVERED, branches EXCEPTION/RETURNED), and approval (APPLIED → DOCS_SUBMITTED → AUTOMATED_CHECKS → RISK_REVIEW → COMPLIANCE_APPROVAL → CATALOG_ONBOARDING → ACTIVATED). Allowed transitions are table-driven and enforced at the DB so an illegal transition can't be persisted regardless of which code path attempts it.",
-          "Free-form status fields updated ad hoc in service code — rejected: no single source of truth for legality, and impossible states leak in. A heavyweight external workflow engine — rejected: overkill for a monolith that already owns the data; the transitions live next to the rows they govern. Cost we accepted: the transition tables and guards are extra code to maintain as the business adds states."
+          "DB가 전이를 강제하는 명시적·테이블 기반 상태 머신",
+          "FulfillmentGroup, Shipment, SupplierApplication은 각각 합법적 전이와 불법적 전이를 가진 여러 상태를 거칩니다. 핸들러 곳곳에 흩어진 암묵적 상태 갱신이야말로 불가능한 상태에 빠지는 경로입니다.",
+          "각 라이프사이클은 명시적 상태 머신입니다: FulfillmentGroup(AWAITING_SUPPLIER → ACCEPTED → FULFILLING → SHIPPED → DELIVERED → SETTLED, 분기 REJECTED/CANCELLED/PARTIALLY_SHIPPED), Shipment(CREATED → ALLOCATED → PICKING → PACKED → DISPATCHED → IN_TRANSIT → DELIVERED, 분기 EXCEPTION/RETURNED), 그리고 승인(APPLIED → DOCS_SUBMITTED → AUTOMATED_CHECKS → RISK_REVIEW → COMPLIANCE_APPROVAL → CATALOG_ONBOARDING → ACTIVATED). 허용된 전이는 테이블로 정의되며 DB에서 강제되므로, 어떤 코드 경로가 시도하든 불법적 전이는 영속화될 수 없습니다.",
+          "서비스 코드에서 임시로 갱신되는 자유 형식 상태 필드 — 배제: 합법성에 대한 단일 진실 공급원이 없고 불가능한 상태가 새어 듭니다. 무거운 외부 워크플로 엔진 — 배제: 이미 데이터를 소유한 모놀리스에는 과도하며, 전이는 그것이 다스리는 행 바로 옆에 둡니다. 우리가 감수한 비용: 비즈니스가 상태를 추가함에 따라 전이 테이블과 가드를 추가로 유지보수해야 합니다."
         ],
         [
-          "OpenSearch read model with per-SKU version guards + re-price at checkout",
-          "Catalog search across ~140,000 SKUs needs p95 < 120ms; Postgres alone couldn't hit that for full-text/faceted search. But a search index is eventually consistent and out-of-order events can show stale prices.",
-          "Catalog is projected into OpenSearch via the outbox, kept eventually consistent. Each SKU carries a monotonic version in the projection; the search-projection worker drops events older than the version it has already applied, so out-of-order delivery can't regress a document. Crucially, search is never authoritative for money — checkout always re-prices from Postgres. This delivered search p95 ~480ms → 110ms while making stale-price exposure harmless (incident C).",
-          "Searching directly against Postgres — rejected: can't meet the latency target at this catalog size and query shape. Treating the search index as a source of truth for price — rejected: projection lag would let a buyer check out at a stale price. Cost we accepted: a short projection lag and the operational weight of a second data store kept in sync via the outbox."
+          "SKU별 버전 가드를 둔 OpenSearch 리드 모델 + 체크아웃 시 재가격 산정",
+          "약 140,000개 SKU에 걸친 카탈로그 검색은 p95 < 120ms가 필요한데, Postgres만으로는 전문(full-text)/패싯 검색에서 이를 달성할 수 없었습니다. 그러나 검색 인덱스는 최종 일관성을 가지며 순서가 뒤바뀐 이벤트는 오래된 가격을 보여줄 수 있습니다.",
+          "카탈로그는 아웃박스를 통해 OpenSearch로 프로젝션되며 최종 일관성을 유지합니다. 각 SKU는 프로젝션에 단조 증가하는 version을 지니고, search-projection 워커는 이미 적용한 version보다 오래된 이벤트를 버리므로 순서가 뒤바뀐 전달이 문서를 퇴행시킬 수 없습니다. 결정적으로, 검색은 결코 금액에 대해 권위를 갖지 않습니다 — 체크아웃은 항상 Postgres에서 재가격을 산정합니다. 이로써 검색 p95가 약 480ms → 110ms가 되었고, 오래된 가격 노출은 무해해졌습니다(사고 C).",
+          "Postgres에 직접 검색 — 배제: 이 카탈로그 규모와 쿼리 형태에서 지연시간 목표를 맞출 수 없습니다. 검색 인덱스를 가격의 진실 공급원으로 취급 — 배제: 프로젝션 지연이 구매자가 오래된 가격으로 체크아웃하게 만듭니다. 우리가 감수한 비용: 짧은 프로젝션 지연과, 아웃박스를 통해 동기화 상태로 유지되는 두 번째 데이터 저장소의 운영 부담."
         ],
         [
-          "Maker-checker supplier approval with append-only audit log",
-          "Onboarding a supplier touches business-registration validity (NTS gov API), bank-account verification, duplicate checks, risk, and compliance. In B2B this must be defensible after the fact and free of single-person override.",
-          "The workflow enforces maker-checker separation: RISK_REVIEW (the maker) and COMPLIANCE_APPROVAL (a different reviewer, the checker) cannot be the same person. Every decision is recorded in an append-only ApprovalDecision log — decisions are added, never edited or deleted — so the full history (including INFO_REQUESTED loops and REJECTED outcomes) is reconstructable. Automating the checks (registration, bank, duplicate) while keeping human approval gated took onboarding from 18 business days to 4 (SLA target < 5).",
-          "Single-reviewer approval — rejected: no separation of duties, a compliance and fraud risk. Mutable approval records or status-only history — rejected: you can't prove what happened or who decided. Cost we accepted: a slightly heavier workflow with two human gates and an ever-growing append-only log."
+          "추가 전용(append-only) 감사 로그를 둔 메이커-체커 공급사 승인",
+          "공급사 온보딩은 사업자등록 유효성(NTS 정부 API), 계좌 검증, 중복 확인, 리스크, 컴플라이언스를 건드립니다. B2B에서 이는 사후에 방어 가능해야 하고 1인 단독 결정에서 자유로워야 합니다.",
+          "워크플로는 메이커-체커(검토자 분리)를 강제합니다: RISK_REVIEW(메이커)와 COMPLIANCE_APPROVAL(다른 검토자, 체커)은 동일인일 수 없습니다. 모든 결정은 추가 전용 ApprovalDecision 로그에 기록됩니다 — 결정은 추가될 뿐 편집되거나 삭제되지 않으므로 — 전체 이력(INFO_REQUESTED 루프와 REJECTED 결과 포함)을 재구성할 수 있습니다. 검사(등록, 계좌, 중복)를 자동화하면서 사람의 승인을 게이트로 유지함으로써 온보딩을 영업일 18일에서 4일로(SLA 목표 < 5일) 줄였습니다.",
+          "단일 검토자 승인 — 배제: 직무 분리가 없어 컴플라이언스 및 부정 리스크입니다. 변경 가능한 승인 기록이나 상태만 남기는 이력 — 배제: 무슨 일이 있었고 누가 결정했는지 증명할 수 없습니다. 우리가 감수한 비용: 두 개의 사람 게이트가 있는 다소 무거운 워크플로와, 끝없이 늘어나는 추가 전용 로그."
         ],
         [
-          "RBAC + org_id row-level scoping for tenant isolation",
-          "One platform serves ~5,200 buyer orgs and ~480 supplier orgs over a shared schema-per-context Postgres database. A buyer must never see another buyer's orders, prices, or settlements, and a supplier must only see its own FulfillmentGroups.",
-          "Identity models Organization (with org_type), User, and Membership (user↔org with Role). Authorization is RBAC by Role, and every tenant-scoped table is scoped by org_id with row-level enforcement, so isolation is a property of the data layer rather than something each query author must remember. Combined with snapshotted, org-scoped ContractPrices, a buyer's negotiated prices are structurally invisible to others.",
-          "Separate database/schema per tenant — rejected: thousands of buyer orgs makes per-tenant isolation operationally absurd to migrate and run. Isolation enforced only in application query filters — rejected: one forgotten WHERE org_id = ? is a cross-tenant leak; we push scoping down to the row level. Cost we accepted: org_id discipline on every tenant-scoped table and the indexes to keep those scoped queries fast."
+          "테넌트 격리를 위한 RBAC + org_id 행 수준 스코핑",
+          "하나의 플랫폼이 컨텍스트별 스키마를 공유하는 Postgres 데이터베이스 위에서 약 5,200개 구매자 조직과 약 480개 공급사 조직을 서비스합니다. 구매자는 결코 다른 구매자의 주문, 가격, 정산을 봐서는 안 되며, 공급사는 오직 자신의 FulfillmentGroup만 봐야 합니다.",
+          "Identity는 Organization(org_type 포함), User, Membership(Role을 가진 user↔org)을 모델링합니다. 권한 부여는 Role 기반 RBAC이며, 모든 테넌트 스코프 테이블은 org_id로 스코핑되고 행 수준에서 강제됩니다. 그래서 격리는 각 쿼리 작성자가 기억해야 하는 무언가가 아니라 데이터 계층의 속성이 됩니다. 스냅샷되고 조직 스코프를 가진 ContractPrice와 결합하면, 구매자가 협상한 가격은 구조적으로 다른 이에게 보이지 않습니다.",
+          "테넌트별 별도 데이터베이스/스키마 — 배제: 수천 개의 구매자 조직은 테넌트별 격리를 마이그레이션하고 운영하기에 비현실적입니다. 애플리케이션 쿼리 필터에서만 격리를 강제 — 배제: WHERE org_id = ?를 한 번이라도 빠뜨리면 테넌트 간 유출입니다. 우리는 스코핑을 행 수준으로 밀어 내립니다. 우리가 감수한 비용: 모든 테넌트 스코프 테이블에서의 org_id 규율과, 그 스코프 쿼리를 빠르게 유지하기 위한 인덱스."
         ]
       ]
     },
     {
       "kind": "callout",
       "tone": "insight",
-      "title": "The decisions are a system, not a menu",
-      "body": "The monolith is what makes the outbox atomic (one transaction, no distributed commit). The outbox is what makes idempotent consumers and the OpenSearch projection reliable. The FulfillmentGroup split is the shared boundary for ordering, fulfillment, and settlement, which is why integer-KRW snapshots make settlement deterministic on the exact unit suppliers act on. DB-authoritative reservation is correct precisely because the monolith lets the confirm and the order persist in one transaction. Remove any one of these and two others get harder. That coupling — by design — is why a six-person team could ship and operate this."
+      "title": "이 결정들은 메뉴가 아니라 하나의 시스템입니다",
+      "body": "모놀리스는 아웃박스를 원자적으로 만듭니다(하나의 트랜잭션, 분산 커밋 없음). 아웃박스는 멱등 컨슈머와 OpenSearch 프로젝션을 신뢰성 있게 만듭니다. FulfillmentGroup 분할은 주문, 풀필먼트, 정산이 공유하는 경계이며, 그래서 정수 KRW 스냅샷이 공급사가 행위하는 바로 그 단위 위에서 정산을 결정론적으로 만듭니다. DB가 권위를 갖는 예약이 옳은 것은 바로 모놀리스가 확정과 주문 영속화를 하나의 트랜잭션에 둘 수 있게 해주기 때문입니다. 이 중 하나라도 빼면 다른 두 개가 더 어려워집니다. 의도된 그 결합이야말로 6인 팀이 이것을 출시하고 운영할 수 있었던 이유입니다."
     },
     {
       "kind": "prose",
       "paragraphs": [
-        "If there is a single bias visible across this table, it is a preference for putting correctness at the database — reservations, transitions, money invariants, and tenant scoping are all enforced where the data lives, not hoped for in application code. The cost of that bias is real: write hotspots on popular SKUs, a shared deploy, and module discipline that has to be enforced by review. We took those costs knowingly because the alternative — distributed systems complexity in service of theoretical scale we didn't have — would have spent a small team's entire budget on operations instead of product.",
-        "The validation is in the results: oversell incidents ~12/month → 0, order-placement error rate 2.3% → 0.1%, checkout p95 820ms → 240ms, catalog search p95 ~480ms → 110ms, supplier onboarding 18 → 4 business days, settlement disputes down ~70%, a sustained 9,000 orders/day peak with headroom, and on-call pages roughly halved. None of those came from a clever framework. They came from nine decisions chosen to reinforce one another and enforced where it counts."
+        "이 표 전반에서 드러나는 단 하나의 편향이 있다면, 그것은 정확성을 데이터베이스에 두려는 선호입니다 — 예약, 전이, 금액 불변식, 테넌트 스코핑은 모두 데이터가 사는 곳에서 강제되며, 애플리케이션 코드에서 그러기를 바라지 않습니다. 그 편향의 비용은 실재합니다: 인기 SKU에서의 쓰기 핫스팟, 공유 배포, 그리고 리뷰로 강제해야 하는 모듈 규율. 우리는 이 비용을 알고도 감수했습니다. 대안 — 우리에게 없던 이론적 규모를 위한 분산 시스템 복잡도 — 은 작은 팀의 예산 전부를 제품이 아니라 운영에 써버렸을 것이기 때문입니다.",
+        "검증은 결과에 있습니다: 오버셀 사고 월 약 12건 → 0건, 주문 접수 오류율 2.3% → 0.1%, 체크아웃 p95 820ms → 240ms, 카탈로그 검색 p95 약 480ms → 110ms, 공급사 온보딩 영업일 18일 → 4일, 정산 분쟁 약 70% 감소, 여유를 둔 지속적인 일 9,000건 주문 피크, 그리고 온콜 페이지 대략 절반으로 감소. 이 중 어느 것도 영리한 프레임워크에서 나온 것이 아닙니다. 서로를 강화하도록 선택되고 중요한 곳에서 강제된 아홉 개의 의사결정에서 나왔습니다."
       ]
     }
   ]

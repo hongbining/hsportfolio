@@ -1,128 +1,128 @@
 {
   "id": "results",
-  "title": "Results",
-  "summary": "The architecture paid off where it mattered: correctness went to zero-defect on the money-and-inventory path, latency on the buyer-facing surfaces dropped to well under target, and supplier onboarding went from weeks to days. Each number traces back to a specific, deliberate decision rather than a generic 'we optimized things' story.",
+  "title": "결과 및 성과",
+  "summary": "이 아키텍처는 가장 중요한 지점에서 효과를 입증했습니다. 자금과 재고가 흐르는 경로의 정합성은 결함 제로(zero-defect)에 도달했고, 구매자 대면 화면의 지연시간은 목표치를 크게 밑도는 수준으로 떨어졌으며, 공급사 온보딩은 수 주에서 수 일로 단축되었습니다. 각 수치는 막연한 '최적화를 했다'는 이야기가 아니라, 구체적이고 의도적인 의사결정 하나하나로 거슬러 올라가 추적할 수 있습니다.",
   "blocks": [
     {
       "kind": "lead",
-      "text": "Every headline number below maps to a named decision or a specific incident fix — the correctness wins came from database-authoritative constraints and idempotency, the latency wins from the read model plus checkout re-pricing, and the onboarding win from automating the maker-checker workflow."
+      "text": "아래의 모든 핵심 수치는 명확히 지정된 의사결정이나 특정 장애의 수정 사항으로 연결됩니다. 정합성 측면의 성과는 데이터베이스를 권위로 삼는 제약 조건과 멱등성에서, 지연시간 측면의 성과는 리드 모델과 체크아웃 시점의 재가격 산정에서, 온보딩 측면의 성과는 메이커-체커(검토자 분리) 워크플로의 자동화에서 비롯되었습니다."
     },
     {
       "kind": "stats",
       "metrics": [
         {
-          "label": "Oversell incidents",
-          "value": "0 / month",
-          "delta": "from ~12 / month",
-          "note": "Eliminated by SELECT ... FOR UPDATE on InventoryItem in the confirm transaction, a partial-unique constraint on active reservations, and CHECK (available >= 0)."
+          "label": "오버셀(초과 판매) 발생 건수",
+          "value": "0건 / 월",
+          "delta": "기존 약 12건 / 월",
+          "note": "확정 트랜잭션 내에서 InventoryItem에 대한 SELECT ... FOR UPDATE, 활성 예약에 대한 부분 유니크 제약, 그리고 CHECK (available >= 0)로 제거했습니다."
         },
         {
-          "label": "Order-placement error rate",
+          "label": "주문 처리 오류율",
           "value": "0.1%",
-          "delta": "from 2.3%",
-          "note": "Driven by the two-phase reservation, consistent sku_id lock ordering with bounded 40P01 retry, and idempotent placement."
+          "delta": "기존 2.3%",
+          "note": "2단계 예약, 일관된 sku_id 락 순서와 제한된 횟수의 40P01 재시도, 그리고 멱등한 주문 처리로 달성했습니다."
         },
         {
-          "label": "Checkout p95",
+          "label": "체크아웃 p95",
           "value": "240ms",
-          "delta": "from 820ms",
-          "note": "Under the < 300ms storefront target. Came from the OpenSearch read model offloading reads and a lean synchronous re-price/credit-check at checkout."
+          "delta": "기존 820ms",
+          "note": "스토어프론트 목표치인 < 300ms 이내입니다. 읽기 부하를 분산한 OpenSearch 리드 모델과 체크아웃 시점의 간결한 동기식 재가격 산정/여신 확인에서 비롯되었습니다."
         },
         {
-          "label": "Catalog search p95",
+          "label": "카탈로그 검색 p95",
           "value": "110ms",
-          "delta": "from ~480ms",
-          "note": "Under the < 120ms search target. OpenSearch read model fed by the outbox with per-SKU version guards."
+          "delta": "기존 약 480ms",
+          "note": "검색 목표치인 < 120ms 이내입니다. SKU별 버전 가드를 갖춘 아웃박스로 공급되는 OpenSearch 리드 모델을 활용했습니다."
         },
         {
-          "label": "Supplier onboarding",
-          "value": "4 business days",
-          "delta": "from 18 business days",
-          "note": "Inside the < 5 business-day SLA. Automated checks (NTS business-registration validation, bank verification, duplicate detection) plus a table-driven maker-checker workflow."
+          "label": "공급사 온보딩",
+          "value": "영업일 4일",
+          "delta": "기존 영업일 18일",
+          "note": "< 영업일 5일 SLA 이내입니다. 자동 검증(국세청 사업자등록 검증, 계좌 검증, 중복 탐지)과 테이블 기반 메이커-체커 워크플로를 도입했습니다."
         },
         {
-          "label": "Settlement disputes",
+          "label": "정산 분쟁",
           "value": "-70%",
-          "delta": "vs. baseline",
-          "note": "Integer KRW math, a single documented rounding rule applied only at fee calc, KST business-day cutoffs, and idempotent settlement."
+          "delta": "기준선 대비",
+          "note": "정수 단위 원화(KRW) 연산, 수수료 계산 시점에만 적용되는 문서화된 단일 반올림 규칙, KST 영업일 마감, 그리고 멱등한 정산으로 달성했습니다."
         },
         {
-          "label": "Sustained peak",
-          "value": "9,000 orders/day",
-          "delta": "with headroom",
-          "note": "Carried on a single Postgres-backed modular monolith plus a small set of async workers."
+          "label": "지속 피크 처리량",
+          "value": "9,000 주문/일",
+          "delta": "여유 용량 확보",
+          "note": "단일 Postgres 기반 모듈러 모놀리스와 소수의 비동기 워커로 처리했습니다."
         },
         {
-          "label": "On-call pages",
-          "value": "~halved",
-          "delta": "vs. baseline",
-          "note": "Fewer correctness incidents, a DLQ with alarms, and idempotent handlers removed most redelivery-driven noise."
+          "label": "온콜 호출(페이지)",
+          "value": "약 절반 수준",
+          "delta": "기준선 대비",
+          "note": "정합성 장애 감소, 알람이 연동된 DLQ, 멱등한 핸들러가 재전송으로 인한 잡음 대부분을 제거했습니다."
         }
       ]
     },
     {
       "kind": "prose",
       "paragraphs": [
-        "The correctness numbers are the ones I am proudest of, because they went to actual zero and stayed there. Overselling was ~12 incidents/month at the worst, and every one was the same shape: a check-then-write race where two orders read the same available count and both reserved the last units. We did not fix that with retries or alerting — we fixed it by making the database authoritative. The hard-confirm path now does SELECT ... FOR UPDATE on the InventoryItem row inside the confirm transaction, there is a partial-unique constraint that prevents two active StockReservations from colliding, and a CHECK (available >= 0) makes an oversell physically unrepresentable. After that constraint shipped, the failure mode could not occur; the number is zero because the schema forbids it, not because we got lucky.",
-        "The order-placement error rate (2.3% → 0.1%) is the same theme one level up. A large share of those errors were deadlocks on multi-line orders — concurrent carts locking SKU rows in different orders (Postgres 40P01) — and stale-price rejections at confirm. We acquire reservation locks sorted by sku_id so lock ordering is always consistent, wrapped in a bounded retry on 40P01, and we re-price/validate at confirm so a stale price is caught deterministically instead of surfacing as a random failure. The residual 0.1% is mostly legitimate rejections (credit limit, genuinely sold-out lines), which is exactly what an error rate should contain.",
-        "The latency wins came from two structural choices, not micro-tuning. Catalog search dropping from ~480ms to 110ms p95 is the OpenSearch read model doing its job: search reads never touch the transactional Postgres path, and the projection is kept eventually-consistent through the outbox with a monotonic per-SKU version guard that drops out-of-order events. Checkout p95 (820ms → 240ms) benefited from the same read-model offloading, but the important design constraint is that checkout never trusts search for money — it always re-prices from Postgres against ContractPrice/PriceList. That keeps the fast read path and the authoritative money path cleanly separated: search is allowed to be slightly stale, checkout is never wrong.",
-        "Supplier onboarding going from 18 to 4 business days is a workflow result, not an infrastructure one. The old process was manual end to end; the new SupplierApplication state machine front-loads AUTOMATED_CHECKS (NTS business-registration validation, bank-account verification, duplicate-supplier detection) so a reviewer only ever looks at applications that already passed the deterministic gates. The maker-checker split (RISK_REVIEW by the maker, COMPLIANCE_APPROVAL by a different checker) is enforced in the model and every transition writes an append-only ApprovalDecision, so the speed-up did not cost us auditability — it improved it.",
-        "Settlement disputes falling ~70% and on-call pages roughly halving are the payoff for treating idempotency as a design concern rather than a patch. Double settlement used to happen when a carrier webhook retried ShipmentDelivered and settlement ran twice; we keyed idempotency on (event_type, external_id), added a processed-events dedup table, and put a UNIQUE constraint on LedgerEntry per (group, type) so a duplicate payout cannot be written even if a handler runs twice. Combined with integer KRW math, one documented rounding rule applied only at fee calculation, and KST business-day cutoffs, the statement mismatches that drove disputes mostly disappeared. The same idempotency discipline plus a dead-letter queue with alarms is why SQS redelivery stopped generating duplicate-effect pages."
+        "정합성 수치는 제가 가장 자랑스러워하는 부분입니다. 실제로 0에 도달했고 그 상태를 유지했기 때문입니다. 오버셀은 최악일 때 월 약 12건이었는데, 모두 동일한 형태였습니다. 두 주문이 같은 가용 수량을 읽고 둘 다 마지막 재고를 예약하는, 확인 후 기록(check-then-write) 경합이었습니다. 우리는 이를 재시도나 알림으로 해결하지 않았습니다. 데이터베이스를 권위로 만들어 해결했습니다. 이제 하드 컨펌(확정) 경로는 확정 트랜잭션 내에서 InventoryItem 로우에 SELECT ... FOR UPDATE를 수행하고, 두 개의 활성 StockReservation이 충돌하지 못하도록 막는 부분 유니크 제약이 있으며, CHECK (available >= 0)가 오버셀을 물리적으로 표현 불가능하게 만듭니다. 이 제약이 배포된 이후 해당 장애 양상은 발생할 수 없게 되었습니다. 수치가 0인 것은 운이 좋아서가 아니라 스키마가 그것을 금지하기 때문입니다.",
+        "주문 처리 오류율(2.3% → 0.1%)은 한 단계 위에서 동일한 주제를 보여줍니다. 그 오류의 상당 부분은 다중 라인 주문에서 발생한 데드락(동시 장바구니가 서로 다른 순서로 SKU 로우를 잠그는 경우, Postgres 40P01)과 확정 시점의 가격 불일치(stale-price) 거절이었습니다. 우리는 락 순서가 항상 일관되도록 sku_id로 정렬해 예약 락을 획득하고 이를 제한된 횟수의 40P01 재시도로 감쌌으며, 확정 시점에 재가격 산정/검증을 수행해 가격 불일치가 무작위 실패로 드러나는 대신 결정적으로 잡히도록 했습니다. 잔여 0.1%는 대부분 정당한 거절(여신 한도, 실제로 품절된 라인)인데, 이는 오류율이 담아야 할 바로 그 내용입니다.",
+        "지연시간 측면의 성과는 미세 튜닝이 아니라 두 가지 구조적 선택에서 비롯되었습니다. 카탈로그 검색이 약 480ms에서 110ms p95로 떨어진 것은 OpenSearch 리드 모델이 제 역할을 한 결과입니다. 검색 읽기는 트랜잭션이 흐르는 Postgres 경로를 전혀 건드리지 않으며, 프로젝션은 순서가 어긋난 이벤트를 버리는 SKU별 단조 증가 버전 가드를 통해 아웃박스로 최종 일관성을 유지합니다. 체크아웃 p95(820ms → 240ms)도 동일한 리드 모델 부하 분산의 혜택을 받았지만, 중요한 설계 제약은 체크아웃이 자금에 대해 검색을 결코 신뢰하지 않는다는 점입니다. 체크아웃은 항상 Postgres에서 ContractPrice/PriceList를 기준으로 재가격을 산정합니다. 이로써 빠른 읽기 경로와 권위 있는 자금 경로가 깔끔하게 분리됩니다. 검색은 다소 오래된 데이터여도 허용되지만, 체크아웃은 결코 틀리지 않습니다.",
+        "공급사 온보딩이 영업일 18일에서 4일로 단축된 것은 인프라가 아니라 워크플로의 결과입니다. 기존 프로세스는 처음부터 끝까지 수작업이었습니다. 새로운 SupplierApplication 상태 머신은 AUTOMATED_CHECKS(국세청 사업자등록 검증, 계좌 검증, 공급사 중복 탐지)를 앞단에 배치해, 검토자는 이미 결정적 관문을 통과한 신청 건만 보게 됩니다. 메이커-체커 분리(메이커의 RISK_REVIEW, 별도 체커의 COMPLIANCE_APPROVAL)는 모델에서 강제되고 모든 전이는 추가 전용(append-only) ApprovalDecision을 기록하므로, 속도 향상이 감사 가능성을 희생시키지 않았습니다. 오히려 향상시켰습니다.",
+        "정산 분쟁이 약 70% 감소하고 온콜 호출이 대략 절반으로 줄어든 것은 멱등성을 임시방편이 아니라 설계의 관심사로 다룬 데 대한 보상입니다. 이중 정산은 캐리어 웹훅이 ShipmentDelivered를 재시도하고 정산이 두 번 실행될 때 발생하곤 했습니다. 우리는 (event_type, external_id)를 키로 멱등성을 부여하고, 처리된 이벤트 중복 제거(dedup) 테이블을 추가했으며, LedgerEntry에 (group, type)별 UNIQUE 제약을 두어 핸들러가 두 번 실행되더라도 중복 지급이 기록될 수 없게 했습니다. 정수 단위 원화 연산, 수수료 계산 시점에만 적용되는 문서화된 단일 반올림 규칙, KST 영업일 마감과 결합되면서 분쟁을 유발하던 명세 불일치가 대부분 사라졌습니다. 동일한 멱등성 원칙과 알람이 연동된 데드레터 큐 덕분에 SQS 재전송이 더 이상 중복 효과로 인한 호출을 발생시키지 않게 되었습니다."
       ]
     },
     {
       "kind": "table",
-      "caption": "Each result mapped to the specific decision or incident fix that produced it.",
-      "columns": ["Result", "Before → After", "What drove it"],
+      "caption": "각 성과를 그것을 만들어낸 구체적인 의사결정 또는 장애 수정 사항에 매핑했습니다.",
+      "columns": ["성과", "이전 → 이후", "동인"],
       "rows": [
         [
-          "Oversell incidents",
-          "~12/mo → 0",
-          "DB-authoritative reservation: SELECT ... FOR UPDATE on InventoryItem in the confirm tx, partial-unique constraint on active reservations, CHECK (available >= 0), reservation-expiry sweeping (Incident A)."
+          "오버셀 발생 건수",
+          "약 12건/월 → 0",
+          "DB를 권위로 삼는 예약: 확정 트랜잭션 내 InventoryItem에 대한 SELECT ... FOR UPDATE, 활성 예약에 대한 부분 유니크 제약, CHECK (available >= 0), 예약 만료 스위핑(장애 A)."
         ],
         [
-          "Order-placement error rate",
+          "주문 처리 오류율",
           "2.3% → 0.1%",
-          "Two-phase soft-hold then hard-confirm, consistent lock ordering by sku_id with bounded 40P01 retry (Incident D), re-price/validate at confirm, idempotent placement."
+          "2단계 소프트 홀드 후 하드 컨펌, sku_id 기준의 일관된 락 순서와 제한된 횟수의 40P01 재시도(장애 D), 확정 시점 재가격 산정/검증, 멱등한 주문 처리."
         ],
         [
-          "Checkout p95",
+          "체크아웃 p95",
           "820ms → 240ms",
-          "Read-model offloading of catalog reads plus a lean synchronous credit check and Postgres re-price at checkout; money path kept off the search path."
+          "카탈로그 읽기의 리드 모델 부하 분산과 체크아웃 시점의 간결한 동기식 여신 확인 및 Postgres 재가격 산정. 자금 경로는 검색 경로에서 분리 유지."
         ],
         [
-          "Catalog search p95",
-          "~480ms → 110ms",
-          "OpenSearch read model fed by the transactional outbox with monotonic per-SKU version guards that drop stale/out-of-order events (Incident C)."
+          "카탈로그 검색 p95",
+          "약 480ms → 110ms",
+          "오래되었거나 순서가 어긋난 이벤트를 버리는 SKU별 단조 증가 버전 가드를 갖추고 트랜잭셔널 아웃박스로 공급되는 OpenSearch 리드 모델(장애 C)."
         ],
         [
-          "Supplier onboarding",
-          "18 days → 4 days",
-          "AUTOMATED_CHECKS (NTS business-registration validation, bank verification, duplicate detection) front-loaded before a table-driven maker-checker review."
+          "공급사 온보딩",
+          "18일 → 4일",
+          "테이블 기반 메이커-체커 검토 이전에 앞단에 배치된 AUTOMATED_CHECKS(국세청 사업자등록 검증, 계좌 검증, 중복 탐지)."
         ],
         [
-          "Settlement disputes",
-          "−~70%",
-          "Idempotency key on (event_type, external_id) + dedup table + UNIQUE LedgerEntry per (group, type) (Incident B); integer KRW, one rounding rule, KST cutoffs (Incident F)."
+          "정산 분쟁",
+          "약 −70%",
+          "(event_type, external_id)에 대한 멱등성 키 + 중복 제거 테이블 + (group, type)별 UNIQUE LedgerEntry(장애 B). 정수 단위 원화, 단일 반올림 규칙, KST 마감(장애 F)."
         ],
         [
-          "Sustained peak / on-call",
-          "9k orders/day; pages ~halved",
-          "Modular monolith with transactional integrity; idempotent SQS consumers + DLQ with alarms removed redelivery side effects (Incident E)."
+          "지속 피크 / 온콜",
+          "9천 주문/일, 호출 약 절반",
+          "트랜잭션 정합성을 갖춘 모듈러 모놀리스. 멱등한 SQS 컨슈머 + 알람이 연동된 DLQ가 재전송 부작용을 제거(장애 E)."
         ]
       ]
     },
     {
       "kind": "callout",
       "tone": "insight",
-      "title": "Why the correctness numbers are zero, not 'low'",
-      "body": "Oversell and double-settlement did not trend toward zero through monitoring and reaction — they hit zero because we pushed the invariant into the database where it cannot be violated: CHECK (available >= 0) and partial-unique constraints on reservations make overselling unrepresentable, and a UNIQUE LedgerEntry per (group, type) makes a duplicate payout a constraint violation rather than a silent double-pay. When the database is the authority for the invariant, the metric stops being a function of how careful the application code is."
+      "title": "정합성 수치가 '낮은' 수준이 아니라 0인 이유",
+      "body": "오버셀과 이중 정산은 모니터링과 사후 대응을 통해 0을 향해 수렴한 것이 아닙니다. 위반될 수 없는 데이터베이스로 불변식을 밀어 넣었기에 0에 도달했습니다. CHECK (available >= 0)와 예약에 대한 부분 유니크 제약은 오버셀을 표현 불가능하게 만들고, (group, type)별 UNIQUE LedgerEntry는 중복 지급을 조용한 이중 결제가 아니라 제약 위반으로 만듭니다. 데이터베이스가 불변식의 권위가 되면, 그 지표는 더 이상 애플리케이션 코드가 얼마나 신중한지에 좌우되는 함수가 아니게 됩니다."
     },
     {
       "kind": "callout",
       "tone": "note",
-      "title": "Boring tech, comfortable headroom",
-      "body": "All of this ran on one PostgreSQL 15 database and a single modular-monolith deployable plus four small workers, serving ~5,200 active buyers, ~480 suppliers, and ~140,000 SKUs at ~38B KRW/month GMV. The 9,000 orders/day peak was carried with headroom — a useful data point that a disciplined Postgres-backed monolith scales further than the microservices-by-default instinct assumes for a 6-person team."
+      "title": "지루한 기술, 넉넉한 여유 용량",
+      "body": "이 모든 것은 하나의 PostgreSQL 15 데이터베이스와 단일 모듈러 모놀리스 배포본, 그리고 4개의 작은 워커 위에서 동작하며, 약 5,200명의 활성 구매자, 약 480개의 공급사, 약 140,000개의 SKU를 월 GMV 약 38B KRW 규모로 처리했습니다. 9,000 주문/일 피크는 여유 용량을 두고 처리되었습니다. 이는 절제된 Postgres 기반 모놀리스가, 6인 팀에게 기본값처럼 여겨지는 마이크로서비스 직감이 가정하는 것보다 더 멀리까지 확장된다는 유용한 데이터 포인트입니다."
     }
   ]
 }

@@ -18,7 +18,7 @@ export function MobileNav() {
           variant="ghost"
           size="icon"
           className="md:hidden"
-          aria-label="Open menu"
+          aria-label="메뉴 열기"
         >
           <Menu className="size-5" aria-hidden="true" />
         </Button>
@@ -32,15 +32,15 @@ export function MobileNav() {
               {siteConfig.name}
             </Dialog.Title>
             <Dialog.Close asChild>
-              <Button variant="ghost" size="icon" aria-label="Close menu">
+              <Button variant="ghost" size="icon" aria-label="메뉴 닫기">
                 <X className="size-5" aria-hidden="true" />
               </Button>
             </Dialog.Close>
           </div>
           <Dialog.Description className="sr-only">
-            Site navigation
+            사이트 내비게이션
           </Dialog.Description>
-          <nav aria-label="Mobile" className="flex flex-col">
+          <nav aria-label="모바일 메뉴" className="flex flex-col">
             {siteConfig.nav.map((item) => (
               <a
                 key={item.href}

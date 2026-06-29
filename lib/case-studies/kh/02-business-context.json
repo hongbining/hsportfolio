@@ -1,75 +1,75 @@
 {
   "id": "business-context",
-  "title": "Business Context",
-  "summary": "KH Wholesale is a managed B2B wholesale marketplace for food and grocery, where one buyer cart fans out across many independent suppliers and KH owns the catalog, ordering, fulfillment, credit, and supplier payouts end to end.",
+  "title": "사업 배경",
+  "summary": "KH Wholesale은 식품 및 식료품을 다루는 관리형(managed) B2B 도매 마켓플레이스로, 하나의 구매자 장바구니가 다수의 독립 공급사로 분기(fan-out)되며 KH가 카탈로그, 주문, 풀필먼트(이행), 신용, 공급사 정산까지 전 과정을 직접 소유합니다.",
   "blocks": [
     {
       "kind": "lead",
-      "text": "KH Wholesale is a managed B2B marketplace that lets an independent retailer fill a single cart from hundreds of suppliers at once, while KH orchestrates pricing, inventory, delivery, credit, and settlement behind that one order."
+      "text": "KH Wholesale은 독립 소매상이 수백 개 공급사의 상품을 하나의 장바구니에 한 번에 담을 수 있게 해주는 관리형 B2B 마켓플레이스입니다. 그 단일 주문 뒤에서 KH가 가격, 재고, 배송, 신용, 정산을 오케스트레이션합니다."
     },
     {
       "kind": "prose",
       "paragraphs": [
-        "KH Wholesale sits between two sides of the food and grocery (FMCG) supply chain. On the demand side are independent retail buyers — restaurants, cafes, convenience stores, and small grocers — who individually are too small to negotiate directly with manufacturers and who want one place to source everything they stock. On the supply side are suppliers — manufacturers, distributors, and farms — who want reach into thousands of small retail accounts without building their own sales, credit, and last-mile operation. KH is the operator in the middle: we run the catalog, the ordering experience, fulfillment coordination, last-mile delivery (through 3PL carriers and a few of our own distribution centers), supplier payouts, and the credit terms extended to buyers.",
-        "The defining product decision is that a buyer places one cart that spans multiple suppliers. A cafe owner does not want to place six separate orders for milk, beans, pastries, cups, cleaning supplies, and produce — they want one cart, one checkout, one delivery experience, and one place to chase if something is wrong. But each of those line items belongs to a different supplier with its own inventory, its own contract prices, its own acceptance decision, and its own shipment. So the single cart the buyer sees is, underneath, an orchestration problem: KH must split that order cleanly per supplier, hold inventory across all of them, snapshot the right negotiated price for this specific buyer, run one credit check against the buyer's organization, and then track each supplier's sub-order independently through acceptance, shipment, delivery, and payout.",
-        "This is a managed marketplace, not a listing site, and that distinction is where the commercial stakes live. KH carries real financial responsibility on both sides of every transaction. We extend credit terms to buyers, which means KH is exposed if a buyer's outstanding balance exceeds their limit at the moment of checkout — so the credit check is synchronous and authoritative at placement, not an after-the-fact reconciliation. On the other side, KH owes accurate, auditable payouts to suppliers based on what was actually delivered, net of fees, settled on KST business-day cutoffs. With GMV around 38B KRW per month flowing through the platform, an error in how an order splits, how a price is snapshotted, how inventory is reserved, or how a delivery maps to a payout is not a cosmetic bug — it is a money bug, and money bugs in a marketplace become disputes, chargebacks, and lost supplier trust."
+        "KH Wholesale은 식품·식료품(FMCG) 공급망의 양측 사이에 자리합니다. 수요 측에는 독립 소매 구매자 — 음식점, 카페, 편의점, 소규모 식료품점 — 가 있는데, 이들은 개별 규모가 너무 작아 제조사와 직접 협상하기 어렵고, 취급하는 모든 품목을 한곳에서 소싱하기를 원합니다. 공급 측에는 공급사 — 제조사, 유통사, 농가 — 가 있는데, 이들은 자체 영업·신용·라스트마일 운영을 구축하지 않고도 수천 개의 소규모 소매 계정에 도달하기를 원합니다. KH는 그 중간에 선 운영자입니다. 카탈로그, 주문 경험, 풀필먼트 조율, 라스트마일 배송(3PL 운송사 및 일부 자체 물류센터를 통해), 공급사 정산, 그리고 구매자에게 제공하는 신용 조건을 KH가 직접 운영합니다.",
+        "이 제품을 규정짓는 핵심 결정은, 구매자가 여러 공급사에 걸친 하나의 장바구니를 담는다는 점입니다. 카페 사장은 우유, 원두, 페이스트리, 컵, 청소용품, 농산물을 위해 여섯 번의 주문을 따로 하고 싶어 하지 않습니다. 그들이 원하는 것은 하나의 장바구니, 하나의 결제, 하나의 배송 경험, 그리고 문제가 생겼을 때 추적할 단일 창구입니다. 그러나 그 품목 각각은 자체 재고, 자체 계약 가격, 자체 수락 결정, 자체 출고를 가진 서로 다른 공급사에 속합니다. 따라서 구매자가 보는 단일 장바구니는 그 내부적으로 오케스트레이션 문제입니다. KH는 그 주문을 공급사별로 깔끔하게 분할하고, 모든 공급사에 걸쳐 재고를 홀드하며, 이 특정 구매자에게 맞는 협상 가격을 스냅샷하고, 구매자의 조직에 대해 한 번의 신용 점검을 수행한 뒤, 각 공급사의 하위 주문을 수락·출고·배송·정산까지 독립적으로 추적해야 합니다.",
+        "이것은 단순 리스팅 사이트가 아니라 관리형 마켓플레이스이며, 바로 그 차이에 상업적 이해관계가 걸려 있습니다. KH는 모든 거래의 양측에 실제 재무적 책임을 집니다. 우리는 구매자에게 신용 조건을 제공하는데, 이는 결제 시점에 구매자의 미결제 잔액이 한도를 초과하면 KH가 위험에 노출된다는 뜻입니다. 그래서 신용 점검은 사후 정산이 아니라 주문 생성(placement) 시점에 동기적이고 권위 있게(authoritative) 이루어집니다. 반대편으로, KH는 실제 배송된 내역에서 수수료를 차감하고 KST 영업일 마감 기준으로 정산하여, 정확하고 감사 가능한(auditable) 정산금을 공급사에 지급할 의무가 있습니다. 월 약 38B KRW의 GMV가 플랫폼을 통해 흐르는 상황에서, 주문이 어떻게 분할되는지, 가격이 어떻게 스냅샷되는지, 재고가 어떻게 예약되는지, 또는 배송이 정산에 어떻게 매핑되는지에서의 오류는 표면적 버그가 아닙니다. 그것은 돈 버그이며, 마켓플레이스에서 돈 버그는 분쟁, 차지백, 그리고 공급사 신뢰 상실로 이어집니다."
       ]
     },
     {
       "kind": "stats",
       "metrics": [
-        { "label": "Active buyers", "value": "~5,200", "note": "Independent retailers: restaurants, cafes, convenience stores, small grocers." },
-        { "label": "Active suppliers", "value": "~480", "note": "Manufacturers, distributors, and farms." },
-        { "label": "SKUs in catalog", "value": "~140,000", "note": "Sellable units, each belonging to a single supplier." },
-        { "label": "Peak orders/day", "value": "~9,000", "note": "Buyer-level orders, each splitting into one or more per-supplier fulfillment groups." },
-        { "label": "GMV", "value": "~38B KRW/month", "note": "Gross merchandise value flowing through the managed marketplace." },
-        { "label": "Storefront p95", "value": "< 300ms", "note": "Latency target for the buyer storefront." },
-        { "label": "Catalog search p95", "value": "< 120ms", "note": "Latency target for catalog search, served from the OpenSearch read model." }
+        { "label": "활성 구매자", "value": "~5,200", "note": "독립 소매상: 음식점, 카페, 편의점, 소규모 식료품점." },
+        { "label": "활성 공급사", "value": "~480", "note": "제조사, 유통사, 농가." },
+        { "label": "카탈로그 내 SKU 수", "value": "~140,000", "note": "판매 가능 단위로, 각각 단일 공급사에 속합니다." },
+        { "label": "피크 시 일일 주문 수", "value": "~9,000", "note": "구매자 단위 주문으로, 각각 하나 이상의 공급사별 FulfillmentGroup으로 분할됩니다." },
+        { "label": "GMV", "value": "~38B KRW/월", "note": "관리형 마켓플레이스를 통해 흐르는 총 거래액." },
+        { "label": "스토어프론트 p95", "value": "< 300ms", "note": "구매자 스토어프론트의 지연시간 목표." },
+        { "label": "카탈로그 검색 p95", "value": "< 120ms", "note": "OpenSearch 리드 모델에서 제공되는 카탈로그 검색의 지연시간 목표." }
       ]
     },
     {
       "kind": "prose",
       "paragraphs": [
-        "The scale matters less for raw throughput than for what it implies about correctness under concurrency. At 140,000 SKUs and ~9,000 orders/day, popular SKUs become contention hotspots: multiple buyers race for the last units of the same fast-moving product within the same second. At ~480 suppliers, a single peak-hour buyer cart can fan out into a dozen independent sub-orders, each of which must be priced, reserved, accepted, shipped, and settled on its own timeline without ever double-counting inventory or money. The platform is not large by consumer-internet standards, but every transaction touches inventory and ledger state, so the engineering bar is correctness-first rather than scale-first."
+        "규모가 중요한 이유는 순수 처리량 때문이라기보다, 그것이 동시성 하에서의 정확성에 대해 시사하는 바 때문입니다. 140,000개 SKU와 일 약 9,000건의 주문 상황에서, 인기 SKU는 경합 핫스팟이 됩니다. 같은 초 안에 여러 구매자가 동일한 잘 나가는 상품의 마지막 재고를 두고 경쟁합니다. 약 480개 공급사 환경에서, 피크 시간대 단일 구매자 장바구니는 십수 개의 독립 하위 주문으로 분기될 수 있으며, 각각은 재고나 돈을 이중으로 집계하는 일 없이 자체 타임라인에 따라 가격 책정, 예약, 수락, 출고, 정산되어야 합니다. 이 플랫폼은 소비자 인터넷 기준으로는 크지 않지만, 모든 거래가 재고와 원장(ledger) 상태를 건드리므로 엔지니어링 기준은 규모 우선이 아니라 정확성 우선입니다."
       ]
     },
     {
       "kind": "definitions",
       "definitions": [
         {
-          "term": "Buyer (Organization, org_type = buyer)",
-          "description": "An independent retailer — restaurant, cafe, convenience store, or small grocer. Needs a single multi-supplier cart, buyer-specific negotiated prices (ContractPrice), credit terms so they can order before paying, reliable last-mile delivery, and one place to handle exceptions across all suppliers in an order."
+          "term": "구매자 (Organization, org_type = buyer)",
+          "description": "독립 소매상 — 음식점, 카페, 편의점, 또는 소규모 식료품점. 여러 공급사를 아우르는 단일 장바구니, 구매자별 협상 가격(ContractPrice), 결제 전에 주문할 수 있는 신용 조건, 신뢰할 수 있는 라스트마일 배송, 그리고 한 주문 내 모든 공급사에 걸친 예외 상황을 처리할 단일 창구가 필요합니다."
         },
         {
-          "term": "Supplier (Organization, org_type = supplier)",
-          "description": "A manufacturer, distributor, or farm that sells SKUs through KH. Needs reach into thousands of small accounts, control over which sub-orders (FulfillmentGroups) it accepts or rejects, accurate inventory and reservation handling, and trustworthy, auditable payouts settled net of fees on a predictable cutoff."
+          "term": "공급사 (Organization, org_type = supplier)",
+          "description": "KH를 통해 SKU를 판매하는 제조사, 유통사, 또는 농가. 수천 개의 소규모 계정에 도달할 수 있는 접근성, 어떤 하위 주문(FulfillmentGroup)을 수락하거나 거절할지에 대한 통제권, 정확한 재고 및 예약 처리, 그리고 예측 가능한 마감 기준으로 수수료를 차감해 정산되는 신뢰할 수 있고 감사 가능한 정산금이 필요합니다."
         },
         {
-          "term": "KH (marketplace operator)",
-          "description": "Owns the catalog, ordering orchestration, fulfillment coordination, last-mile delivery via 3PL carriers and its own DCs, settlement and payouts to suppliers, and the credit extended to buyers. Carries financial exposure on both sides, so it must guarantee money and inventory correctness end to end."
+          "term": "KH (마켓플레이스 운영자)",
+          "description": "카탈로그, 주문 오케스트레이션, 풀필먼트 조율, 3PL 운송사 및 자체 DC를 통한 라스트마일 배송, 공급사 정산 및 정산금 지급, 그리고 구매자에게 제공하는 신용을 소유합니다. 양측 모두에 재무적 노출을 지므로, 돈과 재고의 정확성을 전 과정에 걸쳐 보장해야 합니다."
         },
         {
-          "term": "3PL Carrier",
-          "description": "Third-party logistics provider that executes physical delivery. Integrated through a per-carrier adapter and emits TrackingEvents into KH via webhook, culminating in DELIVERED plus a captured ProofOfDelivery."
+          "term": "3PL 운송사",
+          "description": "물리적 배송을 수행하는 제3자 물류 제공자(3PL). 운송사별 어댑터를 통해 통합되며, 웹훅을 통해 TrackingEvents를 KH로 발행하고, 최종적으로 DELIVERED 상태와 함께 캡처된 ProofOfDelivery로 마무리됩니다."
         },
         {
-          "term": "Distribution Center (DC)",
-          "description": "One of KH's own facilities. Inventory lives per Sku per location, and a single FulfillmentGroup may split into multiple Shipments by DC and by partial availability."
+          "term": "물류센터 (DC)",
+          "description": "KH의 자체 시설 중 하나. 재고는 Sku별·위치별로 존재하며, 단일 FulfillmentGroup은 DC별 그리고 부분 가용성에 따라 여러 Shipment로 분할될 수 있습니다."
         }
       ]
     },
     {
       "kind": "prose",
       "paragraphs": [
-        "Putting the two sides together produces the core engineering challenge that everything else in this case study exists to solve: how do you let a buyer place one logical order, with one price snapshot, one credit decision, and one inventory hold, when that order is physically executed by many independent suppliers who each accept, ship, and get paid separately — and do it without ever overselling a SKU, mispricing a line, or paying a supplier twice?",
-        "The answer we converged on is to make the per-supplier split a first-class concept from the start. When an Order is placed, it splits into one FulfillmentGroup per supplier, and the FulfillmentGroup — not the Order — becomes the unit that suppliers act on and the spine that ordering, fulfillment, and settlement all hang from. The Order's status is derived from the states of its FulfillmentGroups rather than tracked independently, so a buyer-facing order can be PARTIALLY_SHIPPED or COMPLETED as a faithful rollup of what each supplier actually did. Money is snapshotted onto each OrderLine at placement and never recomputed, inventory is reserved at the database rather than trusted from a cache, and settlement keys off delivered shipments with idempotent, append-only ledger entries. The rest of this whitepaper is the story of building that orchestration correctly: the FulfillmentGroup split model, two-phase inventory reservation, integer-KRW money with immutable price snapshots, an outbox-driven event backbone, and the explicit state machines that keep one buyer cart and many supplier sub-orders consistent with each other."
+        "양측을 함께 놓고 보면, 이 케이스 스터디의 나머지 모든 내용이 풀고자 존재하는 핵심 엔지니어링 과제가 드러납니다. 하나의 주문을 각자 따로 수락하고, 출고하고, 대금을 받는 다수의 독립 공급사가 물리적으로 실행하는데도, 어떻게 구매자가 하나의 논리적 주문을 — 하나의 가격 스냅샷, 하나의 신용 결정, 하나의 재고 홀드로 — 생성하게 하면서, 단 한 번도 SKU를 오버셀(초과 판매)하거나, 라인 가격을 잘못 매기거나, 공급사에 이중으로 지급하는 일 없이 해낼 수 있는가?",
+        "우리가 수렴한 해답은, 공급사별 분할을 처음부터 일급(first-class) 개념으로 만드는 것이었습니다. Order가 생성되면 공급사당 하나의 FulfillmentGroup으로 분할되며, Order가 아니라 FulfillmentGroup이 공급사가 행위를 가하는 단위이자 주문·풀필먼트·정산이 모두 매달리는 척추가 됩니다. Order의 상태는 독립적으로 추적되는 대신 그 FulfillmentGroup들의 상태로부터 파생되므로, 구매자가 보는 주문은 각 공급사가 실제로 한 일을 충실히 롤업한 결과로서 PARTIALLY_SHIPPED 또는 COMPLETED가 될 수 있습니다. 돈은 주문 생성 시점에 각 OrderLine에 스냅샷되어 결코 재계산되지 않고, 재고는 캐시를 신뢰하는 대신 데이터베이스 수준에서 예약되며, 정산은 멱등하고 추가 전용(append-only)인 원장 항목으로 배송 완료된 출고를 기준으로 동작합니다. 이 백서의 나머지는 그 오케스트레이션을 정확하게 구축한 이야기입니다. FulfillmentGroup 분할 모델, 2단계 재고 예약, 불변 가격 스냅샷을 갖춘 정수-KRW 금액, 아웃박스 기반 이벤트 백본, 그리고 하나의 구매자 장바구니와 다수의 공급사 하위 주문을 서로 일관되게 유지하는 명시적 상태 머신을 다룹니다."
       ]
     },
     {
       "kind": "callout",
       "tone": "insight",
-      "title": "One cart, many sub-orders",
-      "body": "The single buyer-facing cart is a UX promise; the per-supplier FulfillmentGroup is the engineering reality. Modeling that split early — instead of bolting it on once suppliers needed independent acceptance, shipping, and payout — is the decision the entire ordering, fulfillment, and settlement architecture rests on. Everything correctness-critical (price snapshots, credit checks, inventory holds, ledger entries) is anchored to the group, so that a buyer's one order and its many supplier sub-orders can never drift out of agreement on inventory or money."
+      "title": "하나의 장바구니, 다수의 하위 주문",
+      "body": "구매자가 보는 단일 장바구니는 UX 약속이고, 공급사별 FulfillmentGroup은 엔지니어링의 현실입니다. 공급사가 독립적인 수락·출고·정산을 필요로 하게 된 뒤에 끼워 넣는 대신 그 분할을 일찍부터 모델링한 것은, 주문·풀필먼트·정산 아키텍처 전체가 의지하는 결정입니다. 정확성에 결정적인 모든 것(가격 스냅샷, 신용 점검, 재고 홀드, 원장 항목)이 이 그룹에 고정되어 있어, 구매자의 하나의 주문과 그에 딸린 다수의 공급사 하위 주문이 재고나 돈에 대해 결코 서로 어긋날 수 없습니다."
     }
   ]
 }

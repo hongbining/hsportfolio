@@ -21,7 +21,7 @@ export function ThemeToggle() {
       variant="ghost"
       size="icon"
       suppressHydrationWarning
-      aria-label={`Switch to ${isDark ? "light" : "dark"} theme`}
+      aria-label={`${isDark ? "라이트" : "다크"} 테마로 전환`}
       onClick={() => setTheme(isDark ? "light" : "dark")}
     >
       <Sun className="size-4 dark:hidden" aria-hidden="true" />

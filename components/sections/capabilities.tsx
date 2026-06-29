@@ -18,9 +18,9 @@ export function Capabilities() {
       <Reveal>
         <SectionHeading
           id="capabilities-heading"
-          eyebrow="What I do"
-          title="Depth across the stack, anchored in systems thinking"
-          description="Not just features — the architecture, data, and delivery that keep them reliable as you scale."
+          eyebrow="하는 일"
+          title="시스템 관점으로, 스택 전반을 깊이 있게"
+          description="기능만이 아니라 — 규모가 커져도 안정적으로 돌아가게 하는 아키텍처·데이터·운영까지 책임집니다."
         />
       </Reveal>
 

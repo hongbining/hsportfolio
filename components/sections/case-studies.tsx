@@ -17,9 +17,9 @@ export function CaseStudies() {
       <Reveal>
         <SectionHeading
           id="work-heading"
-          eyebrow="Selected work"
-          title="Case studies, not screenshots"
-          description="The business problem, the architecture, and the decisions behind the work — and what changed as a result."
+          eyebrow="주요 프로젝트"
+          title="스크린샷이 아니라, 엔지니어링 케이스 스터디"
+          description="비즈니스 문제, 시스템 아키텍처, 그리고 그 뒤의 의사결정 — 그래서 무엇이 달라졌는지까지 담았습니다."
         />
       </Reveal>
 

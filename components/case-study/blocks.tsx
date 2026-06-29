@@ -14,9 +14,9 @@ const calloutTone: Record<CalloutTone, string> = {
 }
 
 const calloutLabel: Record<CalloutTone, string> = {
-  note: "Note",
-  warning: "Watch out",
-  insight: "Insight",
+  note: "참고",
+  warning: "주의",
+  insight: "인사이트",
 }
 
 function RenderBlock({ block }: { block: Block }) {

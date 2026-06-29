@@ -1,73 +1,73 @@
 import type { Project } from "@/lib/types"
 
-// Placeholder case studies. The structure is production-ready; replace the copy,
-// metrics, and links with your real work before launch.
+// 플레이스홀더 케이스 스터디입니다. 구조는 프로덕션 수준이며, 문구·지표·링크는
+// 실제 작업 내용으로 교체하세요.
 const projects: Project[] = [
   {
     slug: "billing-platform",
-    title: "Billing platform re-architecture",
-    domain: "B2B SaaS · Payments",
+    title: "빌링 플랫폼 재설계",
+    domain: "B2B SaaS · 결제",
     year: 2024,
-    role: "Lead Full Stack Engineer",
+    role: "리드 풀스택 엔지니어",
     summary:
-      "Replaced a fragile billing monolith with an event-driven ledger the team could safely change every day.",
+      "취약하던 빌링 모놀리스를, 팀이 매일 안전하게 바꿀 수 있는 이벤트 기반 원장(ledger)으로 교체했습니다.",
     problem:
-      "Invoicing logic lived in a monolith that took days to change and produced billing errors as customer volume grew — directly threatening revenue and trust.",
+      "인보이싱 로직이 모놀리스에 묶여 있어 변경에 며칠이 걸렸고, 고객 규모가 커지면서 과금 오류가 발생해 매출과 신뢰를 위협했습니다.",
     architecture:
-      "Extracted billing into an event-driven service backed by an append-only ledger, fronted by a typed API gateway and migrated incrementally with the strangler pattern.",
+      "빌링을 추가 전용(append-only) 원장 기반의 이벤트 드리븐 서비스로 분리하고, 타입이 보장된 API 게이트웨이를 앞단에 두어 스트랭글러 패턴으로 점진 이관했습니다.",
     decisions: [
       {
-        title: "Event-sourced ledger",
+        title: "이벤트 소싱 원장",
         rationale:
-          "An append-only ledger made every balance reconstructable and auditable, removing a whole class of state-corruption bugs.",
+          "추가 전용 원장으로 모든 잔액을 언제든 재구성·감사할 수 있게 되어, 상태 손상 버그 한 부류를 통째로 제거했습니다.",
       },
       {
-        title: "Strangler migration",
+        title: "스트랭글러 이관",
         rationale:
-          "Routing traffic incrementally let us ship to production weekly with no big-bang cutover risk.",
+          "트래픽을 점진적으로 옮겨 빅뱅 전환 위험 없이 매주 프로덕션에 배포할 수 있었습니다.",
       },
       {
-        title: "Contract tests at the boundary",
+        title: "경계에서의 컨트랙트 테스트",
         rationale:
-          "Consumer-driven contracts kept the new service and legacy callers in sync as both evolved.",
+          "소비자 주도 컨트랙트로 신규 서비스와 레거시 호출부가 함께 진화하면서도 어긋나지 않게 유지했습니다.",
       },
     ],
     tradeoffs: [
       {
-        choice: "Event sourcing for the ledger",
-        cost: "Added read-model complexity and eventual-consistency edge cases the team had to design around.",
+        choice: "원장에 이벤트 소싱 채택",
+        cost: "리드 모델 복잡도와 최종 일관성 엣지 케이스가 늘어, 팀이 이를 설계 단계에서 감안해야 했습니다.",
       },
       {
-        choice: "Strangler migration over a clean rewrite",
-        cost: "Ran the legacy and new billing paths in parallel for two quarters, with the operational overhead of dual-running.",
+        choice: "전면 재작성 대신 스트랭글러 이관",
+        cost: "두 분기 동안 레거시와 신규 빌링 경로를 병행 운영하며 이중 운영 부담을 졌습니다.",
       },
     ],
     troubleshooting: [
       {
-        issue: "Duplicate ledger entries appeared under retry storms.",
+        issue: "재시도 폭주 시 원장에 중복 항목이 쌓였습니다.",
         resolution:
-          "Made handlers idempotent with a dedupe key on (aggregateId, requestId) enforced at the database, not the application layer.",
+          "핸들러를 멱등하게 만들고 (aggregateId, requestId) 중복 제거 키를 애플리케이션이 아닌 데이터베이스 레벨에서 강제했습니다.",
       },
       {
-        issue: "Balances drifted against the legacy system mid-migration.",
+        issue: "이관 도중 레거시 시스템과 잔액이 어긋났습니다.",
         resolution:
-          "Added a nightly shadow-compare job that diffed both ledgers and alerted on mismatch before traffic was shifted.",
+          "두 원장을 대조해 불일치 시 알림을 보내는 야간 섀도우 비교 작업을 추가하고, 그 후에야 트래픽을 옮겼습니다.",
       },
     ],
     lessonsLearned: [
-      "Idempotency keys belong in the schema, where they can't be bypassed — not in application code.",
-      "A shadow-compare harness bought more migration confidence than any amount of staging testing.",
+      "멱등성 키는 우회할 수 없는 스키마에 두어야 합니다 — 애플리케이션 코드가 아니라.",
+      "섀도우 비교 도구가 어떤 스테이징 테스트보다 이관에 대한 확신을 더 줬습니다.",
     ],
     impact: [
-      "Cut billing change lead time from days to hours",
-      "Eliminated double-charge incidents in the new flow",
-      "Reconciliation time reduced by ~80%",
+      "빌링 변경 리드타임을 며칠에서 몇 시간으로 단축",
+      "신규 경로에서 이중 과금 장애 제거",
+      "정산 대조 시간 약 80% 감소",
     ],
     stack: ["Next.js", "TypeScript", "Node.js", "PostgreSQL", "Kafka", "AWS"],
     links: [
       {
         type: "case-study",
-        label: "Read the full case study",
+        label: "전체 케이스 스터디 보기",
         href: "/work/billing-platform",
       },
     ],
@@ -75,69 +75,69 @@ const projects: Project[] = [
   },
   {
     slug: "design-system",
-    title: "Design system & component platform",
-    domain: "Enterprise · Developer Experience",
+    title: "디자인 시스템 · 컴포넌트 플랫폼",
+    domain: "엔터프라이즈 · 개발자 경험",
     year: 2023,
-    role: "Senior Full Stack Engineer",
+    role: "시니어 풀스택 엔지니어",
     summary:
-      "Unified five product surfaces on one accessible, versioned component library.",
+      "다섯 개 제품 화면을 접근성 있고 버전 관리되는 하나의 컴포넌트 라이브러리로 통합했습니다.",
     problem:
-      "Five teams shipped diverging UIs, duplicating work and creating inconsistent, inaccessible experiences for enterprise customers.",
+      "다섯 팀이 제각각 UI를 만들면서 작업이 중복되고, 엔터프라이즈 고객에게 일관성 없고 접근성이 떨어지는 경험을 제공했습니다.",
     architecture:
-      "Built a headless, token-driven component library with automated accessibility checks and a versioned release pipeline consumed across all products.",
+      "토큰 기반의 헤드리스 컴포넌트 라이브러리를 만들고, 자동 접근성 검사와 버전 릴리스 파이프라인을 붙여 모든 제품이 공유하도록 했습니다.",
     decisions: [
       {
-        title: "Design tokens as the source of truth",
+        title: "디자인 토큰을 단일 진실 공급원으로",
         rationale:
-          "Theming from tokens let every product restyle without forking components.",
+          "토큰으로 테마를 구성해 각 제품이 컴포넌트를 포크하지 않고도 스타일을 바꿀 수 있었습니다.",
       },
       {
-        title: "Headless primitives",
+        title: "헤드리스 프리미티브",
         rationale:
-          "Separating behavior from styling kept accessibility correct while teams kept their own look and feel.",
+          "동작과 스타일을 분리해 접근성은 정확히 유지하면서 팀별 디자인은 자유롭게 가져갔습니다.",
       },
       {
-        title: "Automated a11y gates in CI",
+        title: "CI에서 접근성 자동 게이트",
         rationale:
-          "Catching regressions in CI made accessibility a default rather than an afterthought.",
+          "회귀를 CI에서 잡아 접근성을 사후 작업이 아닌 기본값으로 만들었습니다.",
       },
     ],
     tradeoffs: [
       {
-        choice: "Headless primitives over a pre-styled kit",
-        cost: "Teams wrote more wiring code up front in exchange for accessibility and theming that didn't fork.",
+        choice: "스타일 완비 키트 대신 헤드리스 프리미티브",
+        cost: "초기에 연결 코드를 더 작성하는 대신, 포크되지 않는 접근성과 테마를 얻었습니다.",
       },
       {
-        choice: "A single versioned package",
-        cost: "Breaking changes needed coordinated upgrades, so we invested in codemods and a strict deprecation policy.",
+        choice: "단일 버전 패키지",
+        cost: "파괴적 변경 시 일괄 업그레이드가 필요해, 코드모드와 엄격한 디프리케이션 정책에 투자했습니다.",
       },
     ],
     troubleshooting: [
       {
-        issue: "Focus traps broke in nested dialogs across products.",
+        issue: "중첩 다이얼로그에서 포커스 트랩이 제품별로 깨졌습니다.",
         resolution:
-          "Standardized on one focus-management primitive and added regression tests driven by an assistive-tech harness.",
+          "포커스 관리 프리미티브를 하나로 표준화하고, 보조기기 기반 회귀 테스트를 추가했습니다.",
       },
       {
-        issue: "Bundle size regressed once adoption was broad.",
+        issue: "적용이 넓어지자 번들 크기가 회귀했습니다.",
         resolution:
-          "Enforced per-component entry points and tree-shaking budgets as a CI gate.",
+          "컴포넌트별 엔트리 포인트와 트리 셰이킹 예산을 CI 게이트로 강제했습니다.",
       },
     ],
     lessonsLearned: [
-      "Design tokens are the contract; once teams trust them, restyling stops being a migration.",
-      "Accessibility holds only if it's verified in CI — documentation alone regresses.",
+      "디자인 토큰은 계약입니다 — 팀이 신뢰하기 시작하면 리스타일링은 더 이상 이관 작업이 아닙니다.",
+      "접근성은 CI에서 검증해야만 유지됩니다. 문서만으로는 회귀합니다.",
     ],
     impact: [
-      "Adopted by 5 product teams in two quarters",
-      "Net-new UI build time down ~40%",
-      "Zero critical accessibility issues at audit",
+      "두 분기 만에 5개 제품팀이 도입",
+      "신규 UI 구축 시간 약 40% 단축",
+      "감사 시점 치명적 접근성 이슈 0건",
     ],
     stack: ["React", "TypeScript", "Tailwind CSS", "Radix UI", "Storybook"],
     links: [
       {
         type: "case-study",
-        label: "Read the full case study",
+        label: "전체 케이스 스터디 보기",
         href: "/work/design-system",
       },
     ],
@@ -145,64 +145,64 @@ const projects: Project[] = [
   },
   {
     slug: "observability",
-    title: "Observability & incident response",
-    domain: "Platform · Reliability",
+    title: "관측 가능성 · 장애 대응",
+    domain: "플랫폼 · 안정성",
     year: 2022,
-    role: "Full Stack Engineer",
+    role: "풀스택 엔지니어",
     summary:
-      "Gave on-call engineers the signals to find and fix issues before customers noticed.",
+      "온콜 엔지니어가 고객이 알아채기 전에 문제를 찾아 고칠 수 있도록 신호 체계를 만들었습니다.",
     problem:
-      "Mean time to resolution was high because teams lacked the traces and metrics to locate failures across services.",
+      "여러 서비스에 걸친 장애를 짚어낼 트레이스와 지표가 없어 평균 복구 시간(MTTR)이 길었습니다.",
     architecture:
-      "Instrumented services with OpenTelemetry, standardized structured logging, and built SLO dashboards with actionable, paging alerts.",
+      "서비스를 OpenTelemetry로 계측하고 구조적 로깅을 표준화했으며, 실행 가능한 페이징 알림이 붙은 SLO 대시보드를 구축했습니다.",
     decisions: [
       {
-        title: "OpenTelemetry everywhere",
+        title: "전 구간 OpenTelemetry",
         rationale:
-          "A vendor-neutral standard meant tracing survived future backend changes.",
+          "벤더 중립 표준이라 향후 백엔드를 바꿔도 트레이싱이 살아남았습니다.",
       },
       {
-        title: "SLO-based alerting",
+        title: "SLO 기반 알림",
         rationale:
-          "Alerting on user-facing SLOs cut noise and pointed on-call straight at impact.",
+          "사용자 영향 SLO에 알림을 걸어 노이즈를 줄이고 온콜을 곧장 영향 지점으로 안내했습니다.",
       },
     ],
     tradeoffs: [
       {
-        choice: "Vendor-neutral OpenTelemetry",
-        cost: "More upfront instrumentation effort than a turnkey agent, traded for long-term portability.",
+        choice: "벤더 중립 OpenTelemetry",
+        cost: "턴키 에이전트보다 초기 계측 비용이 컸지만, 장기적 이식성을 얻었습니다.",
       },
       {
-        choice: "SLO-based paging",
-        cost: "Required product and engineering to agree on user-facing objectives before alerts could be tuned.",
+        choice: "SLO 기반 페이징",
+        cost: "알림을 조정하기 전에 제품과 엔지니어링이 사용자 관점 목표에 합의해야 했습니다.",
       },
     ],
     troubleshooting: [
       {
-        issue: "Trace context was lost across an async queue boundary.",
+        issue: "비동기 큐 경계에서 트레이스 컨텍스트가 유실됐습니다.",
         resolution:
-          "Propagated context explicitly through message headers and added a contract test asserting span continuity.",
+          "메시지 헤더로 컨텍스트를 명시적으로 전파하고, 스팬 연속성을 검증하는 컨트랙트 테스트를 추가했습니다.",
       },
       {
-        issue: "Alert fatigue from symptom-based rules.",
+        issue: "증상 기반 규칙으로 인한 알림 피로가 심했습니다.",
         resolution:
-          "Replaced host- and CPU-based alerts with burn-rate alerts on SLOs, sharply cutting noise.",
+          "호스트·CPU 기반 알림을 SLO 번레이트(burn-rate) 알림으로 교체해 노이즈를 크게 줄였습니다.",
       },
     ],
     lessonsLearned: [
-      "Alert on what users feel, not on what's easy to measure.",
-      "Tracing is only as good as its weakest propagation boundary — test the seams.",
+      "측정하기 쉬운 것이 아니라, 사용자가 체감하는 것에 알림을 거세요.",
+      "트레이싱은 가장 약한 전파 경계만큼만 좋습니다 — 이음새를 테스트하세요.",
     ],
     impact: [
-      "MTTR reduced by ~60%",
-      "Pager volume down while coverage went up",
-      "SLOs adopted as the shared reliability language",
+      "MTTR 약 60% 단축",
+      "커버리지는 늘면서 페이지 호출은 감소",
+      "SLO를 팀 공통의 안정성 언어로 정착",
     ],
     stack: ["Node.js", "OpenTelemetry", "Grafana", "PostgreSQL", "AWS"],
     links: [
       {
         type: "case-study",
-        label: "Read the full case study",
+        label: "전체 케이스 스터디 보기",
         href: "/work/observability",
       },
     ],
@@ -210,7 +210,7 @@ const projects: Project[] = [
   },
 ]
 
-/** Returns all case studies, newest first. */
+/** 모든 케이스 스터디를 최신순으로 반환합니다. */
 export function getAllProjects(): Project[] {
   return [...projects].sort((a, b) => b.year - a.year)
 }

@@ -1,165 +1,165 @@
 {
   "id": "order-flow",
-  "title": "Order Flow",
-  "summary": "How a single multi-supplier cart becomes a set of per-supplier FulfillmentGroups: the placement transaction, the price-snapshot and credit-check gates, the two-phase inventory hold, the outbox event, and the supplier accept/confirm handshake that drives the FulfillmentGroup state machine.",
+  "title": "주문 흐름",
+  "summary": "하나의 멀티 공급사 장바구니(Cart)가 어떻게 공급사별 FulfillmentGroup 묶음으로 변환되는지를 다룹니다: 주문 생성 트랜잭션, 가격 스냅샷과 신용 한도 검증 게이트, 2단계 재고 홀드, 아웃박스 이벤트, 그리고 FulfillmentGroup 상태 머신을 구동하는 공급사 수락/확정 핸드셰이크입니다.",
   "blocks": [
     {
       "kind": "lead",
-      "text": "The order flow is the spine of the platform: a buyer places one Cart that spans multiple suppliers, and we split it into per-supplier FulfillmentGroups that become the unit every downstream context — fulfillment, settlement, supplier UX — acts on."
+      "text": "주문 흐름은 플랫폼의 척추입니다: 구매자는 여러 공급사에 걸친 하나의 Cart를 생성하고, 우리는 이를 공급사별 FulfillmentGroup으로 분할합니다. 이 FulfillmentGroup이 풀필먼트(이행), 정산, 공급사 UX 등 모든 다운스트림 컨텍스트가 작업하는 기본 단위가 됩니다."
     },
     {
       "kind": "prose",
       "paragraphs": [
-        "A buyer's Cart can hold CartItems from many suppliers at once — that is the whole point of a managed marketplace. But suppliers do not act on \"an order\"; they act on \"my part of an order.\" So the first thing placement does is split the Cart into one FulfillmentGroup per supplier, each owning its own OrderLines, its own state, its own acceptance, its own shipment, and ultimately its own Settlement. The buyer-level Order status is never stored as a primary fact; it is derived from the states of its FulfillmentGroups. This split, done at placement and never later, is decision #3 in our canonical set and the single most load-bearing modeling choice we made.",
-        "Placement itself is a synchronous transaction with four gates, in order: snapshot pricing, credit-limit check, inventory soft-hold, and tax/fee calc. Pricing is resolved per OrderLine from the buyer-specific ContractPrice if one exists, otherwise the supplier's PriceList, and then SNAPSHOTTED onto the OrderLine as immutable integer KRW. We never recompute money from a live price after this point; the snapshot is the contract. The credit-limit check is deliberately synchronous against the buyer Organization — it costs us a little checkout latency, but a managed marketplace extending credit terms cannot place an order it might not be allowed to extend, and reconciling that asynchronously after the fact was strictly worse.",
-        "Inventory is reserved as a two-phase operation. At placement we take a soft-hold: a Redis StockReservation with a TTL, per OrderLine. This is fast, contention-light, and reversible — if the buyer never gets a supplier to accept, the hold simply expires and sweeps. It is explicitly NOT authoritative. The authoritative decrement happens only when a supplier accepts the group, at which point the soft-hold is hard-confirmed into a Postgres StockReservation under a row lock with a version check, and we re-price and re-validate to catch anything that went stale between placement and confirm. Two phases, two different stores, two different consistency guarantees, on purpose.",
-        "All of placement — the Order, every FulfillmentGroup, every OrderLine, and the OutboxEvent(OrderPlaced) — commits inside one Postgres transaction. We never write to the database and then publish to SQS as a second step; that dual-write is exactly the failure mode the transactional outbox exists to remove (decision #2). The OrderPlaced event lands in the same commit as the order; a worker drains the outbox and publishes to SNS/SQS afterward. If the transaction rolls back, nothing was published, because nothing was written."
+        "구매자의 Cart는 여러 공급사의 CartItem을 한꺼번에 담을 수 있습니다. 그것이 바로 관리형 마켓플레이스의 존재 이유입니다. 그러나 공급사는 \"하나의 주문\"에 대해 작업하지 않고, \"내 몫의 주문\"에 대해 작업합니다. 그래서 주문 생성이 가장 먼저 하는 일은 Cart를 공급사당 하나의 FulfillmentGroup으로 분할하는 것입니다. 각 FulfillmentGroup은 자신의 OrderLine, 자신의 상태, 자신의 수락, 자신의 출고, 그리고 궁극적으로 자신의 Settlement를 소유합니다. 구매자 수준의 Order 상태는 결코 1차 사실(primary fact)로 저장되지 않으며, 소속된 FulfillmentGroup들의 상태로부터 파생됩니다. 주문 생성 시점에 이루어지고 그 이후에는 결코 변경되지 않는 이 분할은 우리의 정규 결정 집합에서 #3번이며, 우리가 내린 모델링 선택 중 가장 핵심적으로 하중을 지탱하는 결정입니다.",
+        "주문 생성 자체는 네 개의 게이트를 순서대로 거치는 동기 트랜잭션입니다: 가격 스냅샷, 신용 한도 검증, 재고 소프트 홀드, 세금/수수료 계산입니다. 가격은 OrderLine 단위로 결정되는데, 구매자 전용 ContractPrice가 존재하면 그것을, 없으면 공급사의 PriceList를 사용한 뒤 변경 불가능한 정수 KRW 값으로 OrderLine에 스냅샷됩니다. 이 시점 이후로는 실시간 가격으로 금액을 재계산하지 않습니다. 스냅샷이 곧 계약입니다. 신용 한도 검증은 구매자 Organization을 대상으로 의도적으로 동기 처리합니다. 약간의 결제 지연시간을 치르지만, 신용 거래 조건을 제공하는 관리형 마켓플레이스가 제공이 허용되지 않을 수도 있는 주문을 생성해서는 안 되며, 사후에 비동기로 이를 정합화하는 것은 명백히 더 나쁜 선택이었습니다.",
+        "재고는 2단계 작업으로 예약합니다. 주문 생성 시점에는 소프트 홀드를 잡습니다: OrderLine 단위로 TTL을 가진 Redis StockReservation입니다. 이는 빠르고, 경합이 적으며, 되돌릴 수 있습니다. 구매자가 끝내 공급사의 수락을 받지 못하면 홀드는 그냥 만료되고 정리됩니다. 이는 명시적으로 권위 있는(authoritative) 값이 아닙니다. 권위 있는 차감은 공급사가 그룹을 수락할 때만 일어나며, 이 시점에 소프트 홀드는 행 잠금(row lock)과 버전 검증 하에 Postgres StockReservation으로 하드 컨펌(확정)되고, 주문 생성과 확정 사이에 오래된(stale) 데이터가 발생했는지 잡아내기 위해 재가격 산정 및 재검증을 수행합니다. 두 단계, 두 개의 서로 다른 저장소, 두 개의 서로 다른 일관성 보장을 의도적으로 사용합니다.",
+        "주문 생성의 전부, 즉 Order, 모든 FulfillmentGroup, 모든 OrderLine, 그리고 OutboxEvent(OrderPlaced)는 하나의 Postgres 트랜잭션 안에서 커밋됩니다. 데이터베이스에 쓴 다음 두 번째 단계로 SQS에 발행하는 일은 결코 하지 않습니다. 그러한 이중 쓰기(dual-write)야말로 트랜잭셔널 아웃박스가 제거하기 위해 존재하는 실패 양상입니다(결정 #2). OrderPlaced 이벤트는 주문과 같은 커밋 안에 기록되고, 이후에 워커가 아웃박스를 비우며 SNS/SQS로 발행합니다. 트랜잭션이 롤백되면 아무것도 쓰이지 않았으므로 아무것도 발행되지 않습니다."
       ]
     },
     {
       "kind": "flow",
-      "title": "Order placement: Cart to confirmed FulfillmentGroups",
+      "title": "주문 생성: Cart에서 확정된 FulfillmentGroup까지",
       "steps": [
         {
           "step": 1,
-          "actor": "Buyer (storefront)",
-          "title": "Place the multi-supplier Cart",
-          "detail": "The buyer submits a Cart whose CartItems may span several suppliers. We validate the cart is non-empty, the buyer Membership has the Role to place orders, and stamp an idempotency key (Redis) so a retried submit cannot create a second Order.",
+          "actor": "구매자 (스토어프론트)",
+          "title": "멀티 공급사 Cart 생성",
+          "detail": "구매자는 CartItem이 여러 공급사에 걸쳐 있을 수 있는 Cart를 제출합니다. 우리는 장바구니가 비어 있지 않은지, 구매자 Membership이 주문 생성 권한이 있는 Role을 갖고 있는지 검증하고, 재시도된 제출이 두 번째 Order를 만들지 못하도록 멱등성 키(Redis)를 찍습니다.",
           "state": "Cart: DRAFT"
         },
         {
           "step": 2,
-          "actor": "Ordering module",
-          "title": "Split into one FulfillmentGroup per supplier",
-          "detail": "Group CartItems by Sku.supplierId. Each group becomes a FulfillmentGroup with its own OrderLines. The buyer-level Order is the parent; its status will be DERIVED from the groups, never stored independently.",
-          "state": "Order: PLACED (pending commit)"
+          "actor": "주문(Ordering) 모듈",
+          "title": "공급사당 하나의 FulfillmentGroup으로 분할",
+          "detail": "CartItem을 Sku.supplierId 기준으로 그룹화합니다. 각 그룹은 자신의 OrderLine을 가진 FulfillmentGroup이 됩니다. 구매자 수준의 Order는 부모이며, 그 status는 그룹들로부터 파생되고 독립적으로 저장되지 않습니다.",
+          "state": "Order: PLACED (커밋 대기)"
         },
         {
           "step": 3,
-          "actor": "Pricing module",
-          "title": "Snapshot pricing per OrderLine",
-          "detail": "Resolve each line's unit price: buyer-specific ContractPrice if present, else the supplier's PriceList. Snapshot the resolved integer-KRW price, quantity, and computed line total onto the OrderLine. From here the price is immutable for the life of the order.",
-          "state": "Order: PLACED (pending commit)"
+          "actor": "가격(Pricing) 모듈",
+          "title": "OrderLine 단위 가격 스냅샷",
+          "detail": "각 라인의 단가를 결정합니다: 존재하면 구매자 전용 ContractPrice, 없으면 공급사의 PriceList입니다. 결정된 정수 KRW 단가, 수량, 계산된 라인 합계를 OrderLine에 스냅샷합니다. 이 시점부터 가격은 주문의 수명 동안 변경 불가능합니다.",
+          "state": "Order: PLACED (커밋 대기)"
         },
         {
           "step": 4,
-          "actor": "Settlement / credit",
-          "title": "Synchronous credit-limit check",
-          "detail": "Sum the snapshotted order total and check it against the buyer Organization's available credit. This is synchronous and blocking by design; failing here aborts placement with no side effects (nothing reserved, nothing written).",
-          "state": "Order: PLACED (pending commit)",
-          "branches": ["CREDIT_DECLINED -> abort placement, release nothing"]
+          "actor": "정산 / 신용",
+          "title": "동기 신용 한도 검증",
+          "detail": "스냅샷된 주문 합계를 합산하여 구매자 Organization의 사용 가능 신용 한도와 대조합니다. 이는 설계상 동기적이며 블로킹됩니다. 여기서 실패하면 부수 효과 없이 주문 생성이 중단됩니다(예약된 것도, 쓰인 것도 없음).",
+          "state": "Order: PLACED (커밋 대기)",
+          "branches": ["CREDIT_DECLINED -> 주문 생성 중단, 해제할 것 없음"]
         },
         {
           "step": 5,
-          "actor": "Inventory module",
-          "title": "Inventory soft-hold (Redis, TTL)",
-          "detail": "For each OrderLine take a soft-hold StockReservation in Redis with a TTL. Locks are acquired in sku_id order to keep lock ordering consistent. This is a reversible, non-authoritative hold; if no supplier accepts, it expires and is swept.",
-          "state": "Order: PLACED (pending commit)",
-          "branches": ["INSUFFICIENT_STOCK -> abort, release prior holds"]
+          "actor": "재고(Inventory) 모듈",
+          "title": "재고 소프트 홀드 (Redis, TTL)",
+          "detail": "각 OrderLine에 대해 TTL을 가진 소프트 홀드 StockReservation을 Redis에 잡습니다. 잠금 순서를 일관되게 유지하기 위해 잠금은 sku_id 순서로 획득합니다. 이는 되돌릴 수 있고 권위 없는 홀드이며, 어떤 공급사도 수락하지 않으면 만료되어 정리됩니다.",
+          "state": "Order: PLACED (커밋 대기)",
+          "branches": ["INSUFFICIENT_STOCK -> 중단, 이전 홀드 해제"]
         },
         {
           "step": 6,
-          "actor": "Pricing / tax",
-          "title": "Tax and fee calculation",
-          "detail": "Compute taxes and platform fees on the snapshotted totals using integer math; the single documented rounding rule is applied only here, at fee calculation, never on line prices.",
-          "state": "Order: PLACED (pending commit)"
+          "actor": "가격 / 세금",
+          "title": "세금 및 수수료 계산",
+          "detail": "정수 연산을 사용하여 스냅샷된 합계에 대해 세금과 플랫폼 수수료를 계산합니다. 문서화된 단일 반올림 규칙은 오직 여기, 즉 수수료 계산 시점에만 적용되며 라인 가격에는 결코 적용되지 않습니다.",
+          "state": "Order: PLACED (커밋 대기)"
         },
         {
           "step": 7,
-          "actor": "Ordering module (DB tx)",
-          "title": "Persist Order + groups + OutboxEvent in one transaction",
-          "detail": "Insert the Order, every FulfillmentGroup (status AWAITING_SUPPLIER), every OrderLine, and an OutboxEvent(OrderPlaced) inside a single Postgres transaction. Commit is the point of no return; either all of it is durable or none of it is.",
+          "actor": "주문(Ordering) 모듈 (DB tx)",
+          "title": "Order + 그룹 + OutboxEvent를 하나의 트랜잭션으로 영속화",
+          "detail": "Order, 모든 FulfillmentGroup(status AWAITING_SUPPLIER), 모든 OrderLine, 그리고 OutboxEvent(OrderPlaced)를 하나의 Postgres 트랜잭션 안에 삽입합니다. 커밋이 돌이킬 수 없는 지점이며, 전부가 영속화되거나 아무것도 영속화되지 않습니다.",
           "state": "FulfillmentGroup: AWAITING_SUPPLIER"
         },
         {
           "step": 8,
-          "actor": "Notifications worker",
-          "title": "Publish OrderPlaced via outbox",
-          "detail": "A worker drains the OutboxEvent table and publishes OrderPlaced to SNS/SQS. Consumers are idempotent (keyed by event id), so SQS redelivery cannot double-notify a supplier.",
+          "actor": "알림(Notifications) 워커",
+          "title": "아웃박스를 통해 OrderPlaced 발행",
+          "detail": "워커가 OutboxEvent 테이블을 비우며 OrderPlaced를 SNS/SQS로 발행합니다. 소비자는 멱등하므로(이벤트 id로 키잉됨), SQS 재전달이 공급사에 중복 알림을 보낼 수 없습니다.",
           "state": "FulfillmentGroup: AWAITING_SUPPLIER"
         },
         {
           "step": 9,
-          "actor": "Supplier (portal)",
-          "title": "Supplier accepts or rejects the group",
-          "detail": "Each supplier sees only their FulfillmentGroup and accepts or rejects it independently. Rejection moves that one group to REJECTED and releases its hold; it does not block the buyer's other groups.",
+          "actor": "공급사 (포털)",
+          "title": "공급사가 그룹을 수락하거나 거절",
+          "detail": "각 공급사는 자신의 FulfillmentGroup만 보고 독립적으로 수락하거나 거절합니다. 거절은 해당 그룹 하나만 REJECTED로 옮기고 그 홀드를 해제하며, 구매자의 다른 그룹을 막지 않습니다.",
           "state": "FulfillmentGroup: AWAITING_SUPPLIER",
-          "branches": ["REJECT -> REJECTED (release soft-hold)", "no action before TTL -> hold expires, sweep"]
+          "branches": ["REJECT -> REJECTED (소프트 홀드 해제)", "TTL 이전 무대응 -> 홀드 만료, 정리"]
         },
         {
           "step": 10,
-          "actor": "Inventory + Ordering (DB tx)",
-          "title": "Confirm reservation on ACCEPT (re-price + hard-confirm)",
-          "detail": "On accept we re-price and re-validate against current Postgres data to catch stale prices, then hard-confirm: SELECT ... FOR UPDATE the InventoryItem row, decrement available under a version check and CHECK (available >= 0), and promote the Redis soft-hold to a durable Postgres StockReservation. The group transitions to ACCEPTED.",
+          "actor": "재고 + 주문 (DB tx)",
+          "title": "ACCEPT 시 예약 확정 (재가격 산정 + 하드 컨펌)",
+          "detail": "수락 시 오래된 가격을 잡아내기 위해 현재 Postgres 데이터를 기준으로 재가격 산정 및 재검증한 뒤, 하드 컨펌을 수행합니다: InventoryItem 행을 SELECT ... FOR UPDATE 하고, 버전 검증과 CHECK (available >= 0) 하에 available을 차감하며, Redis 소프트 홀드를 영속적인 Postgres StockReservation으로 승격합니다. 그룹은 ACCEPTED로 전이됩니다.",
           "state": "FulfillmentGroup: ACCEPTED",
-          "branches": ["stale price / version conflict -> reject confirm, surface to supplier", "deadlock 40P01 -> bounded retry"]
+          "branches": ["오래된 가격 / 버전 충돌 -> 확정 거부, 공급사에 노출", "데드락 40P01 -> 제한된 재시도"]
         }
       ]
     },
     {
       "kind": "states",
-      "title": "FulfillmentGroup state machine",
+      "title": "FulfillmentGroup 상태 머신",
       "states": [
         {
           "state": "AWAITING_SUPPLIER",
-          "description": "Created at placement inside the order transaction. The soft-hold is live in Redis; the supplier has not yet acted. This is the only entry state.",
+          "description": "주문 트랜잭션 안에서 주문 생성 시점에 만들어집니다. 소프트 홀드는 Redis에 살아 있고, 공급사는 아직 행동하지 않았습니다. 이것이 유일한 진입 상태입니다.",
           "transitions": [
-            { "on": "supplier accepts (re-price + hard-confirm)", "to": "ACCEPTED" },
-            { "on": "supplier rejects", "to": "REJECTED" },
-            { "on": "buyer/ops cancels before acceptance", "to": "CANCELLED" }
+            { "on": "공급사 수락 (재가격 산정 + 하드 컨펌)", "to": "ACCEPTED" },
+            { "on": "공급사 거절", "to": "REJECTED" },
+            { "on": "수락 전 구매자/운영팀 취소", "to": "CANCELLED" }
           ]
         },
         {
           "state": "ACCEPTED",
-          "description": "Supplier has accepted; the soft-hold has been hard-confirmed into a Postgres StockReservation under a row lock. Eligible to begin fulfillment.",
+          "description": "공급사가 수락했고, 소프트 홀드가 행 잠금 하에 Postgres StockReservation으로 하드 컨펌되었습니다. 풀필먼트를 시작할 수 있습니다.",
           "transitions": [
-            { "on": "allocation begins (inventory decremented)", "to": "FULFILLING" },
-            { "on": "cancel (compensating release of reservation)", "to": "CANCELLED" }
+            { "on": "할당 시작 (재고 차감됨)", "to": "FULFILLING" },
+            { "on": "취소 (예약의 보상 해제)", "to": "CANCELLED" }
           ]
         },
         {
           "state": "FULFILLING",
-          "description": "Inventory allocated and one or more Shipments are being created and worked (picking/packing). May split by DC and by partial availability.",
+          "description": "재고가 할당되었고 하나 이상의 Shipment가 생성되어 작업 중입니다(피킹/패킹). DC 단위 및 부분 가용성에 따라 분할될 수 있습니다.",
           "transitions": [
-            { "on": "all lines dispatched", "to": "SHIPPED" },
-            { "on": "some lines dispatched, others pending", "to": "PARTIALLY_SHIPPED" },
-            { "on": "cancel before dispatch", "to": "CANCELLED" }
+            { "on": "모든 라인 출고됨", "to": "SHIPPED" },
+            { "on": "일부 라인 출고, 나머지 대기 중", "to": "PARTIALLY_SHIPPED" },
+            { "on": "출고 전 취소", "to": "CANCELLED" }
           ]
         },
         {
           "state": "PARTIALLY_SHIPPED",
-          "description": "A subset of the group's OrderLines have shipped while the remainder are still being fulfilled (e.g., split across DCs or staged availability).",
+          "description": "그룹의 OrderLine 일부는 배송되었고 나머지는 아직 풀필먼트 중입니다(예: DC 간 분할 또는 단계적 가용성).",
           "transitions": [
-            { "on": "remaining lines dispatched", "to": "SHIPPED" }
+            { "on": "나머지 라인 출고됨", "to": "SHIPPED" }
           ]
         },
         {
           "state": "SHIPPED",
-          "description": "All ShipmentLines for the group have been dispatched to carriers; we are ingesting TrackingEvents via carrier webhooks.",
+          "description": "그룹의 모든 ShipmentLine이 운송사(carrier)로 출고되었으며, 우리는 운송사 웹훅을 통해 TrackingEvent를 수집하고 있습니다.",
           "transitions": [
-            { "on": "delivery confirmed + ProofOfDelivery captured", "to": "DELIVERED" }
+            { "on": "배송 확인 + ProofOfDelivery 확보", "to": "DELIVERED" }
           ]
         },
         {
           "state": "DELIVERED",
-          "description": "Delivery confirmed and ProofOfDelivery (photo/signature in S3) captured; ShipmentDelivered emitted. The group is now eligible for settlement.",
+          "description": "배송이 확인되고 ProofOfDelivery(S3에 저장된 사진/서명)가 확보되었으며, ShipmentDelivered가 발행되었습니다. 그룹은 이제 정산 대상이 됩니다.",
           "transitions": [
-            { "on": "settlement worker computes payout/ledger entries", "to": "SETTLED" }
+            { "on": "정산 워커가 payout/원장 항목을 계산", "to": "SETTLED" }
           ]
         },
         {
           "state": "SETTLED",
-          "description": "Terminal. Settlement and Payout computed, LedgerEntry rows written (append-only, double-entry). No further transitions.",
+          "description": "종료 상태. Settlement와 Payout이 계산되고 LedgerEntry 행이 기록되었습니다(추가 전용, 복식부기). 더 이상의 전이는 없습니다.",
           "transitions": []
         },
         {
           "state": "REJECTED",
-          "description": "Terminal branch. Supplier declined the group; the soft-hold is released and no inventory is confirmed. Other groups in the same Order are unaffected.",
+          "description": "종료 분기. 공급사가 그룹을 거절했고, 소프트 홀드는 해제되며 확정된 재고는 없습니다. 같은 Order의 다른 그룹은 영향을 받지 않습니다.",
           "transitions": []
         },
         {
           "state": "CANCELLED",
-          "description": "Terminal branch. Cancelled before delivery (by buyer or ops); any active reservation is released via a compensating action.",
+          "description": "종료 분기. 배송 전 (구매자 또는 운영팀에 의해) 취소되었으며, 활성 예약이 있으면 보상 액션을 통해 해제됩니다.",
           "transitions": []
         }
       ]
@@ -167,41 +167,41 @@
     {
       "kind": "prose",
       "paragraphs": [
-        "Order-level status is derived: an Order whose groups are a mix of SHIPPED/DELIVERED and still-FULFILLING is PARTIALLY_*; an Order whose groups are all DELIVERED/SETTLED is COMPLETED; an Order whose groups all reached REJECTED/CANCELLED is CANCELLED. We never let an Order status drift out of sync with its groups because it is computed from them, not stored beside them.",
-        "Every transition above is enforced by an explicit, table-driven state machine (decision #6), not by ad hoc if-statements scattered across services. The allowed (from_state, event, to_state) tuples live in a transitions table, and the DB rejects any update that does not correspond to a permitted transition. That made the state machine auditable, testable in isolation, and impossible to bypass by a stray code path."
+        "Order 수준의 status는 파생됩니다: 그룹들이 SHIPPED/DELIVERED와 아직 FULFILLING 중인 상태가 섞인 Order는 PARTIALLY_* 이고, 그룹들이 모두 DELIVERED/SETTLED인 Order는 COMPLETED이며, 그룹들이 모두 REJECTED/CANCELLED에 도달한 Order는 CANCELLED입니다. Order status는 그룹 옆에 저장되는 것이 아니라 그룹으로부터 계산되므로, 우리는 Order status가 그룹과 어긋나도록 결코 두지 않습니다.",
+        "위의 모든 전이는 서비스 곳곳에 흩어진 임시방편 if 문이 아니라, 명시적이고 테이블 기반인 상태 머신에 의해 강제됩니다(결정 #6). 허용된 (from_state, event, to_state) 튜플은 transitions 테이블에 존재하며, DB는 허용된 전이에 해당하지 않는 모든 업데이트를 거부합니다. 그 덕분에 상태 머신은 감사 가능하고, 독립적으로 테스트 가능하며, 떠도는 코드 경로로 우회하는 것이 불가능해졌습니다."
       ]
     },
     {
       "kind": "code",
       "language": "typescript",
-      "caption": "Transactional placement: split into FulfillmentGroups, snapshot prices, and write the OutboxEvent in one Postgres transaction (no dual writes).",
+      "caption": "트랜잭셔널 주문 생성: FulfillmentGroup으로 분할하고, 가격을 스냅샷하며, OutboxEvent를 하나의 Postgres 트랜잭션 안에 기록합니다(이중 쓰기 없음).",
       "code": "async function placeOrder(cart: Cart, buyerOrgId: string, idemKey: string): Promise<Order> {\n  // Idempotency: a retried submit returns the original Order instead of creating a new one.\n  const existing = await idempotency.lookup(idemKey);\n  if (existing) return existing.order;\n\n  // 1. Split the multi-supplier cart into one FulfillmentGroup per supplier.\n  const groups = groupBySupplier(cart.items); // Map<supplierId, CartItem[]>\n\n  // 2. Snapshot pricing per line: ContractPrice (buyer-specific) > PriceList. Integer KRW.\n  const priced = await pricing.snapshot(buyerOrgId, groups); // immutable unit + line totals\n\n  // 3. Synchronous credit-limit check against the buyer Organization (blocking by design).\n  const orderTotal = sumLineTotals(priced); // bigint won, no minor units\n  await credit.assertWithinLimit(buyerOrgId, orderTotal); // throws CreditDeclined\n\n  // 4. Two-phase inventory: soft-hold in Redis (TTL). Lock SKUs in sku_id order (deadlock avoidance).\n  const holds = await inventory.softHold(\n    priced.lines.sort((a, b) => (a.skuId < b.skuId ? -1 : 1))\n  ); // throws InsufficientStock -> prior holds released\n\n  // 5. Tax/fee on snapshotted totals; the single documented rounding rule is applied only here.\n  const fees = pricing.calcFees(priced);\n\n  // 6. Persist Order + groups + OutboxEvent atomically. Commit is the point of no return.\n  return db.transaction(async (tx) => {\n    const order = await tx.orders.insert({\n      buyerOrgId,\n      status: 'PLACED',\n      total: orderTotal,\n      fees,\n    });\n\n    for (const [supplierId, lines] of priced.bySupplier) {\n      const fg = await tx.fulfillmentGroups.insert({\n        orderId: order.id,\n        supplierId,\n        status: 'AWAITING_SUPPLIER', // the only entry state\n      });\n      await tx.orderLines.insertMany(fg.id, lines); // snapshotted price is immutable from here\n    }\n\n    // Transactional outbox: published by a worker AFTER commit. No DB-then-SQS dual write.\n    await tx.outbox.insert({\n      eventType: 'OrderPlaced',\n      aggregateId: order.id,\n      payload: { orderId: order.id, buyerOrgId, holdIds: holds.ids },\n    });\n\n    await tx.idempotency.record(idemKey, order.id);\n    return order;\n  });\n}"
     },
     {
       "kind": "code",
       "language": "typescript",
-      "caption": "Supplier accept: re-price/re-validate, then hard-confirm the soft-hold under a row lock with a version + CHECK guard. Transition is DB-enforced.",
+      "caption": "공급사 수락: 재가격 산정/재검증 후, 버전 + CHECK 가드와 함께 행 잠금 하에 소프트 홀드를 하드 컨펌합니다. 전이는 DB에 의해 강제됩니다.",
       "code": "async function acceptGroup(groupId: string, supplierUserId: string): Promise<void> {\n  await db.transaction(async (tx) => {\n    // Guarded transition: only AWAITING_SUPPLIER -> ACCEPTED is permitted by the transitions table.\n    const fg = await tx.fulfillmentGroups.selectForUpdate(groupId);\n    assertTransition(fg.status, 'ACCEPTED'); // throws on illegal (from,to)\n\n    // Re-price + re-validate against current Postgres data to catch stale prices since placement.\n    await pricing.revalidateSnapshot(fg); // throws StalePrice -> surface to supplier, no confirm\n\n    for (const line of await tx.orderLines.byGroup(groupId)) {\n      // Hard-confirm: lock the inventory row, decrement under version + CHECK (available >= 0).\n      const item = await tx.inventoryItems.selectForUpdate(line.skuId, line.location);\n      if (item.available < line.qty) throw new InsufficientStock(line.skuId);\n      await tx.inventoryItems.decrement({\n        skuId: line.skuId,\n        location: line.location,\n        qty: line.qty,\n        expectedVersion: item.version, // optimistic version guard\n      }); // CHECK (available >= 0) is the last line of defense against oversell\n\n      // Promote the Redis soft-hold into a durable Postgres StockReservation (CONFIRMED).\n      await tx.stockReservations.confirm(line.reservationId);\n    }\n\n    await tx.fulfillmentGroups.transition(groupId, 'ACCEPTED');\n    await tx.outbox.insert({\n      eventType: 'GroupAccepted',\n      aggregateId: groupId,\n      payload: { groupId },\n    });\n  }); // bounded retry wraps this call on deadlock (SQLSTATE 40P01)\n}"
     },
     {
       "kind": "callout",
       "tone": "insight",
-      "title": "Idempotent placement and re-pricing at confirm",
-      "body": "Two correctness properties hold the whole flow together. First, placement is idempotent: every submit carries an idempotency key (Redis), so a retried or double-clicked checkout returns the original Order rather than creating a second one — idempotency is a design property here, not a patch bolted on later. Second, the snapshot taken at placement is provisional until a supplier acts. Between placement (AWAITING_SUPPLIER) and accept (ACCEPTED) a ContractPrice or PriceList can change, so on accept we re-price and re-validate against current Postgres before hard-confirming the reservation. A stale price aborts the confirm and surfaces back to the supplier instead of silently shipping at a wrong price. The companion rule from the search context applies here too: OpenSearch is never authoritative for money — checkout and confirm always re-price from Postgres."
+      "title": "멱등한 주문 생성과 확정 시점의 재가격 산정",
+      "body": "두 가지 정합성 속성이 전체 흐름을 하나로 묶습니다. 첫째, 주문 생성은 멱등합니다: 모든 제출은 멱등성 키(Redis)를 동반하므로, 재시도되거나 더블 클릭된 결제는 두 번째 Order를 만드는 대신 원래의 Order를 반환합니다. 멱등성은 여기서 나중에 덧붙인 패치가 아니라 설계 속성입니다. 둘째, 주문 생성 시점에 잡은 스냅샷은 공급사가 행동하기 전까지 잠정적입니다. 주문 생성(AWAITING_SUPPLIER)과 수락(ACCEPTED) 사이에 ContractPrice나 PriceList가 바뀔 수 있으므로, 수락 시 우리는 예약을 하드 컨펌하기 전에 현재 Postgres를 기준으로 재가격 산정 및 재검증합니다. 오래된 가격은 확정을 중단시키고, 잘못된 가격으로 조용히 배송하는 대신 공급사에게 다시 노출합니다. 검색 컨텍스트의 동반 규칙이 여기에도 적용됩니다: OpenSearch는 결코 금액의 권위 있는 소스가 아니며, 결제와 확정은 항상 Postgres로부터 재가격 산정합니다."
     },
     {
       "kind": "callout",
       "tone": "warning",
-      "title": "The soft-hold is not authoritative",
-      "body": "The Redis soft-hold exists to reserve intent cheaply and reversibly while a supplier decides; it is explicitly not the source of truth for stock. Authoritative inventory lives in Postgres and is only decremented under SELECT ... FOR UPDATE with a version check and a CHECK (available >= 0) at confirm time. Treating the Redis hold as authoritative is exactly the check-then-write race that caused our oversell incident; the database row lock at confirm is the fix, and the soft-hold's only jobs are speed and reversibility via TTL expiry sweeping."
+      "title": "소프트 홀드는 권위 있는 값이 아닙니다",
+      "body": "Redis 소프트 홀드는 공급사가 결정하는 동안 의도를 저렴하고 되돌릴 수 있게 예약하기 위해 존재할 뿐, 명시적으로 재고의 진실 소스(source of truth)가 아닙니다. 권위 있는 재고는 Postgres에 있으며, 확정 시점에 버전 검증과 CHECK (available >= 0)를 동반한 SELECT ... FOR UPDATE 하에서만 차감됩니다. Redis 홀드를 권위 있는 값으로 취급하는 것이 바로 우리의 오버셀(초과 판매) 사고를 일으킨 check-then-write 경합이며, 확정 시점의 데이터베이스 행 잠금이 그 해결책입니다. 소프트 홀드의 유일한 역할은 TTL 만료 정리를 통한 속도와 되돌릴 수 있음뿐입니다."
     },
     {
       "kind": "stats",
       "metrics": [
-        { "label": "Checkout p95", "value": "240ms", "delta": "from 820ms", "note": "includes the synchronous credit-limit check we chose to keep blocking" },
-        { "label": "Order-placement error rate", "value": "0.1%", "delta": "from 2.3%", "note": "after guarded transitions + idempotent placement" },
-        { "label": "Oversell incidents", "value": "0 / month", "delta": "from ~12 / month", "note": "DB-authoritative reservation at confirm" },
-        { "label": "Sustained peak", "value": "9,000 orders/day", "note": "with headroom on the modular monolith" }
+        { "label": "결제 p95", "value": "240ms", "delta": "820ms에서 개선", "note": "블로킹으로 유지하기로 선택한 동기 신용 한도 검증을 포함" },
+        { "label": "주문 생성 오류율", "value": "0.1%", "delta": "2.3%에서 개선", "note": "가드된 전이 + 멱등한 주문 생성 이후" },
+        { "label": "오버셀 사고", "value": "월 0건", "delta": "월 약 12건에서 개선", "note": "확정 시점의 DB 권위 예약" },
+        { "label": "지속 피크", "value": "9,000 orders/day", "note": "모듈러 모놀리스에서 여유 용량 확보" }
       ]
     }
   ]

@@ -37,9 +37,9 @@ export function CaseStudyToc({ items }: { items: TocItem[] }) {
   }, [items])
 
   return (
-    <nav aria-label="On this page" className="text-sm">
+    <nav aria-label="목차" className="text-sm">
       <p className="mb-3 text-xs font-medium tracking-wider text-muted-foreground uppercase">
-        On this page
+        목차
       </p>
       <ul className="border-l border-border">
         {items.map((item, index) => {

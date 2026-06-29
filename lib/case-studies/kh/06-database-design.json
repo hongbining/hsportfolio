@@ -1,89 +1,89 @@
 {
   "id": "database-design",
-  "title": "Database Design",
-  "summary": "How a single PostgreSQL 15 database, organized schema-per-context with row-level org_id scoping, became the authoritative store for ordering, inventory, fulfillment, and settlement — and how a handful of carefully chosen constraints, not application code, are what actually enforce correctness under concurrency.",
+  "title": "데이터베이스 설계",
+  "summary": "단일 PostgreSQL 15 데이터베이스를 컨텍스트별 스키마(schema-per-context)와 행 단위 org_id 스코핑으로 구성하여 주문, 재고, 풀필먼트(이행), 정산의 권위 있는 저장소로 만든 방법, 그리고 동시성 환경에서 정합성을 실제로 강제하는 것이 애플리케이션 코드가 아니라 신중하게 선택한 몇 가지 제약 조건이라는 점에 대한 이야기입니다.",
   "blocks": [
     {
       "kind": "lead",
-      "text": "One PostgreSQL 15 database is the spine of KH Wholesale; every invariant that matters for money or stock is enforced at the database with constraints, not hoped for in application code."
+      "text": "단일 PostgreSQL 15 데이터베이스가 KH 도매의 중추입니다. 돈이나 재고와 관련해 중요한 모든 불변식(invariant)은 애플리케이션 코드에서 막연히 기대하는 것이 아니라 데이터베이스의 제약 조건으로 강제됩니다."
     },
     {
       "kind": "prose",
       "paragraphs": [
-        "I made an early and deliberate decision: KH runs on a single PostgreSQL 15 database, not a database-per-service sprawl. With a modular monolith and a 6-person team, one database bought me transactional integrity across bounded contexts — I can place an Order, write the per-supplier FulfillmentGroups, snapshot prices onto OrderLines, and append the OutboxEvent in one transaction that either fully commits or fully rolls back. That single property eliminated an entire class of distributed-consistency bugs we would otherwise have spent the next year chasing.",
-        "Inside that one database I used schema-per-context to keep the bounded contexts from bleeding into each other. Each module — identity, catalog, pricing, ordering, inventory, fulfillment, supplier, settlement, notifications — owns a Postgres schema. Cross-context reads go through well-defined module APIs, not ad-hoc joins across schemas, so the schema boundary doubles as an architectural fence. It is the same discipline a service boundary would give us, minus the network calls and the dual-write problem.",
-        "Tenant isolation is row-level on org_id. Every buyer or supplier is an Organization, and nearly every business table carries an org_id column. RBAC decides what a User can do; org_id scoping decides which rows they can even see. Application-layer query helpers inject the org_id predicate, and the columns are indexed so that scoping is also a performance lever, not just a security one.",
-        "The three design rules I refused to compromise on: money is always integer KRW stored as bigint, prices are snapshotted immutably at the moment they matter, and any invariant that protects money or stock is expressed as a database constraint. Everything below follows from those rules."
+        "저는 초기에 의도적인 결정을 내렸습니다. KH는 서비스마다 데이터베이스를 두는 난립 구조가 아니라 단일 PostgreSQL 15 데이터베이스 위에서 동작합니다. 모듈러 모놀리스와 6인 팀이라는 조건에서, 단일 데이터베이스는 바운디드 컨텍스트 전반에 걸친 트랜잭션 정합성을 제공해 주었습니다. Order를 생성하고, 공급사별 FulfillmentGroup을 기록하고, 가격을 OrderLine에 스냅샷으로 박아 넣고, OutboxEvent를 추가하는 작업을 하나의 트랜잭션에서 수행해 전부 커밋되거나 전부 롤백되도록 할 수 있습니다. 이 단일한 속성 덕분에, 그렇지 않았다면 이후 1년 내내 쫓아다녔을 분산 정합성 버그의 한 부류 전체가 사라졌습니다.",
+        "그 하나의 데이터베이스 안에서는 컨텍스트별 스키마(schema-per-context)를 사용해 바운디드 컨텍스트들이 서로 섞이지 않도록 했습니다. 각 모듈(identity, catalog, pricing, ordering, inventory, fulfillment, supplier, settlement, notifications)은 각자의 Postgres 스키마를 소유합니다. 컨텍스트 간 읽기는 스키마를 가로지르는 임의의 조인이 아니라 잘 정의된 모듈 API를 통하므로, 스키마 경계가 곧 아키텍처 울타리 역할을 겸합니다. 이는 서비스 경계가 주었을 것과 동일한 규율이되, 네트워크 호출과 이중 쓰기(dual-write) 문제는 빠진 형태입니다.",
+        "테넌트 격리는 org_id를 기준으로 한 행 단위(row-level)로 이루어집니다. 모든 구매자나 공급사는 하나의 Organization이며, 거의 모든 업무 테이블은 org_id 컬럼을 갖습니다. RBAC은 User가 무엇을 할 수 있는지를 결정하고, org_id 스코핑은 그들이 애초에 어떤 행을 볼 수 있는지를 결정합니다. 애플리케이션 계층의 쿼리 헬퍼가 org_id 조건을 주입하며, 해당 컬럼에는 인덱스가 걸려 있어 스코핑은 보안 수단일 뿐 아니라 성능 지렛대이기도 합니다.",
+        "제가 타협을 거부한 세 가지 설계 규칙은 다음과 같습니다. 돈은 항상 정수 단위의 원(KRW)이며 bigint로 저장하고, 가격은 중요한 시점에 불변(immutable)으로 스냅샷되며, 돈이나 재고를 보호하는 모든 불변식은 데이터베이스 제약 조건으로 표현합니다. 아래의 모든 내용은 이 규칙들로부터 따라 나옵니다."
       ]
     },
     {
       "kind": "definitions",
       "definitions": [
         {
-          "term": "Money as bigint KRW",
-          "description": "The Korean won has no minor units, so every amount is an integer number of won stored as bigint. No floats, no decimals, no currency-conversion ambiguity. All money math is integer; the only rounding in the system happens at fee calculation, governed by one documented rounding rule, so statements reconcile to the won."
+          "term": "bigint KRW로서의 돈",
+          "description": "한국 원화에는 보조 단위가 없으므로, 모든 금액은 정수 단위의 원이며 bigint로 저장합니다. 부동소수점도, 소수도, 통화 환산의 모호함도 없습니다. 모든 금액 연산은 정수 연산이며, 시스템에서 유일하게 반올림이 발생하는 곳은 수수료 계산뿐입니다. 이는 문서화된 단일 반올림 규칙으로 통제되므로, 명세서가 원 단위까지 정확히 맞아떨어집니다."
         },
         {
-          "term": "Immutable price snapshots",
-          "description": "When an Order is placed, the effective price (ContractPrice or PriceList) is copied onto each OrderLine as unit_price_krw and frozen. Later price-list edits never mutate historical orders. The OrderLine is the legal record of what was agreed, which is why it is treated as append-once and never updated in place for price fields."
+          "term": "불변 가격 스냅샷",
+          "description": "Order가 생성되면, 적용 가격(ContractPrice 또는 PriceList)이 각 OrderLine에 unit_price_krw로 복사되어 동결됩니다. 이후의 가격표 수정은 과거 주문을 절대 변경하지 않습니다. OrderLine은 합의된 내용에 대한 법적 기록이며, 그렇기 때문에 한 번만 추가(append-once)되고 가격 필드는 결코 제자리에서 갱신되지 않는 방식으로 다룹니다."
         },
         {
-          "term": "Schema-per-context",
-          "description": "One Postgres database, but each bounded context owns its own schema (ordering, inventory, fulfillment, settlement, ...). The schema namespace enforces module boundaries; cross-schema access is through module APIs rather than raw cross-schema joins."
+          "term": "컨텍스트별 스키마(schema-per-context)",
+          "description": "하나의 Postgres 데이터베이스를 쓰되, 각 바운디드 컨텍스트가 자신의 스키마(ordering, inventory, fulfillment, settlement, ...)를 소유합니다. 스키마 네임스페이스가 모듈 경계를 강제하며, 스키마 간 접근은 원시(raw) 크로스 스키마 조인이 아니라 모듈 API를 통합니다."
         },
         {
-          "term": "org_id row-level scoping",
-          "description": "Multi-tenant isolation is enforced per row via an org_id column referencing identity.organizations. Combined with RBAC, it guarantees a buyer org can never read or mutate another org's rows."
+          "term": "org_id 행 단위 스코핑",
+          "description": "멀티 테넌트 격리는 identity.organizations를 참조하는 org_id 컬럼을 통해 행 단위로 강제됩니다. RBAC과 결합되어, 한 구매자 조직이 다른 조직의 행을 결코 읽거나 변경할 수 없도록 보장합니다."
         },
         {
-          "term": "Transactional outbox",
-          "description": "Instead of writing to Postgres and then publishing to SNS/SQS (a dual write that can half-fail), I write an OutboxEvent row in the same transaction as the state change. A relay polls the outbox and publishes to SNS, marking rows dispatched. The database commit is the single source of truth for 'did this event happen'."
+          "term": "트랜잭셔널 아웃박스",
+          "description": "Postgres에 쓴 다음 SNS/SQS로 발행하는(절반만 실패할 수 있는 이중 쓰기) 대신, 상태 변경과 동일한 트랜잭션 안에서 OutboxEvent 행을 기록합니다. 릴레이가 아웃박스를 폴링하여 SNS로 발행하고 행을 dispatched로 표시합니다. '이 이벤트가 실제로 발생했는가'에 대한 단일 진실 공급원은 데이터베이스 커밋입니다."
         }
       ]
     },
     {
       "kind": "code",
       "language": "sql",
-      "caption": "Core DDL for the ordering, inventory, and outbox tables. Money is bigint KRW; correctness invariants are CHECK and UNIQUE constraints, not application logic.",
+      "caption": "ordering, inventory, outbox 테이블에 대한 핵심 DDL입니다. 돈은 bigint KRW이며, 정합성 불변식은 애플리케이션 로직이 아니라 CHECK 및 UNIQUE 제약 조건입니다.",
       "code": "-- Schemas mirror the bounded contexts.\nCREATE SCHEMA IF NOT EXISTS ordering;\nCREATE SCHEMA IF NOT EXISTS inventory;\nCREATE SCHEMA IF NOT EXISTS messaging;\n\n-- Explicit, table-driven enums for the state machines.\nCREATE TYPE ordering.order_status AS ENUM (\n  'DRAFT', 'PLACED', 'PARTIALLY_FULFILLED', 'PARTIALLY_CANCELLED',\n  'COMPLETED', 'CANCELLED'\n);\nCREATE TYPE ordering.fulfillment_group_status AS ENUM (\n  'AWAITING_SUPPLIER', 'ACCEPTED', 'FULFILLING', 'SHIPPED',\n  'DELIVERED', 'SETTLED', 'REJECTED', 'CANCELLED', 'PARTIALLY_SHIPPED'\n);\n\n-- ORDER: buyer-level. Status is DERIVED from its FulfillmentGroups,\n-- but persisted for fast reads. org_id scopes to the buyer org.\nCREATE TABLE ordering.orders (\n  id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,\n  org_id          bigint NOT NULL REFERENCES identity.organizations (id),\n  buyer_user_id   bigint NOT NULL REFERENCES identity.users (id),\n  status          ordering.order_status NOT NULL DEFAULT 'DRAFT',\n  currency        char(3) NOT NULL DEFAULT 'KRW' CHECK (currency = 'KRW'),\n  subtotal_krw    bigint NOT NULL DEFAULT 0 CHECK (subtotal_krw >= 0),\n  tax_krw         bigint NOT NULL DEFAULT 0 CHECK (tax_krw >= 0),\n  total_krw       bigint NOT NULL DEFAULT 0 CHECK (total_krw >= 0),\n  placed_at       timestamptz,\n  created_at      timestamptz NOT NULL DEFAULT now(),\n  updated_at      timestamptz NOT NULL DEFAULT now()\n);\n\n-- FULFILLMENT GROUP: the per-supplier sub-order. The unit suppliers act on,\n-- and the spine of ordering -> fulfillment -> settlement.\nCREATE TABLE ordering.fulfillment_groups (\n  id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,\n  order_id        bigint NOT NULL REFERENCES ordering.orders (id),\n  org_id          bigint NOT NULL REFERENCES identity.organizations (id), -- buyer org\n  supplier_org_id bigint NOT NULL REFERENCES identity.organizations (id),\n  status          ordering.fulfillment_group_status NOT NULL\n                    DEFAULT 'AWAITING_SUPPLIER',\n  subtotal_krw    bigint NOT NULL DEFAULT 0 CHECK (subtotal_krw >= 0),\n  accepted_at     timestamptz,\n  created_at      timestamptz NOT NULL DEFAULT now(),\n  updated_at      timestamptz NOT NULL DEFAULT now(),\n  -- One supplier appears at most once per order: the split is deterministic.\n  CONSTRAINT uq_group_per_supplier UNIQUE (order_id, supplier_org_id)\n);\n\n-- ORDER LINE: belongs to a FulfillmentGroup. Price is SNAPSHOTTED here\n-- at placement and never mutated. amount_krw is derived but stored\n-- and constrained so it can never drift from qty * unit_price.\nCREATE TABLE ordering.order_lines (\n  id                   bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,\n  fulfillment_group_id bigint NOT NULL\n                         REFERENCES ordering.fulfillment_groups (id),\n  sku_id               bigint NOT NULL REFERENCES catalog.skus (id),\n  qty                  integer NOT NULL CHECK (qty > 0),\n  -- Immutable snapshot of the agreed price at placement time.\n  unit_price_krw       bigint NOT NULL CHECK (unit_price_krw >= 0),\n  price_source         text NOT NULL CHECK (\n                         price_source IN ('CONTRACT', 'PRICE_LIST', 'PROMOTION')),\n  amount_krw           bigint NOT NULL\n                         GENERATED ALWAYS AS (qty * unit_price_krw) STORED,\n  created_at           timestamptz NOT NULL DEFAULT now(),\n  -- A SKU cannot appear twice within one group: merge at cart time.\n  CONSTRAINT uq_line_per_sku UNIQUE (fulfillment_group_id, sku_id)\n);\n\n-- INVENTORY ITEM: stock per Sku per location. The database is authoritative.\n-- available can never go negative; the CHECK is the last line of defense\n-- against oversell.\nCREATE TABLE inventory.inventory_items (\n  id           bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,\n  sku_id       bigint NOT NULL REFERENCES catalog.skus (id),\n  location_id  bigint NOT NULL REFERENCES fulfillment.locations (id),\n  on_hand      integer NOT NULL DEFAULT 0 CHECK (on_hand >= 0),\n  reserved     integer NOT NULL DEFAULT 0 CHECK (reserved >= 0),\n  available    integer NOT NULL DEFAULT 0 CHECK (available >= 0),\n  -- Optimistic concurrency: bumped on every confirm/decrement.\n  version      bigint  NOT NULL DEFAULT 0,\n  updated_at   timestamptz NOT NULL DEFAULT now(),\n  CONSTRAINT uq_inventory_sku_location UNIQUE (sku_id, location_id),\n  -- The accounting identity must always hold.\n  CONSTRAINT ck_inventory_balance CHECK (available = on_hand - reserved)\n);\n\n-- STOCK RESERVATION: the confirmed (hard) hold. The Redis soft-hold has a TTL;\n-- on supplier ACCEPT we confirm it into this row under a row lock.\nCREATE TYPE inventory.reservation_status AS ENUM ('CONFIRMED', 'RELEASED', 'CONSUMED');\nCREATE TABLE inventory.stock_reservations (\n  id                   bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,\n  inventory_item_id    bigint NOT NULL REFERENCES inventory.inventory_items (id),\n  fulfillment_group_id bigint NOT NULL\n                         REFERENCES ordering.fulfillment_groups (id),\n  order_line_id        bigint NOT NULL REFERENCES ordering.order_lines (id),\n  qty                  integer NOT NULL CHECK (qty > 0),\n  status               inventory.reservation_status NOT NULL DEFAULT 'CONFIRMED',\n  expires_at           timestamptz,  -- swept if a confirm never completes\n  created_at           timestamptz NOT NULL DEFAULT now(),\n  -- At most ONE active reservation per line: the anti-oversell / anti-double-\n  -- reserve guard. Partial index so released/consumed rows don't collide.\n  CONSTRAINT uq_active_reservation_per_line\n    EXCLUDE (order_line_id WITH =) WHERE (status = 'CONFIRMED')\n);\n\n-- OUTBOX: written in the SAME transaction as the state change it describes.\n-- A relay polls undispatched rows and publishes to SNS, then marks them.\nCREATE TABLE messaging.outbox_events (\n  id             bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,\n  aggregate_type text   NOT NULL,          -- e.g. 'Order', 'Shipment'\n  aggregate_id   bigint NOT NULL,\n  event_type     text   NOT NULL,          -- e.g. 'OrderPlaced'\n  -- Idempotency anchor for consumers: (event_type, external_id) is unique.\n  external_id    text   NOT NULL,\n  payload        jsonb  NOT NULL,\n  occurred_at    timestamptz NOT NULL DEFAULT now(),\n  dispatched_at  timestamptz,             -- NULL until the relay publishes\n  CONSTRAINT uq_outbox_event_identity UNIQUE (event_type, external_id)\n);\n-- Hot path for the relay: only ever scans the small undispatched set.\nCREATE INDEX ix_outbox_undispatched\n  ON messaging.outbox_events (occurred_at)\n  WHERE dispatched_at IS NULL;"
     },
     {
       "kind": "prose",
       "paragraphs": [
-        "A few of these choices are load-bearing and worth calling out. amount_krw on order_lines is a STORED generated column — the database computes qty * unit_price_krw so the line total can never drift from its inputs, even if buggy application code tries to set it directly. unit_price_krw is a frozen snapshot; nothing in the system updates it after placement, which is what makes an OrderLine a trustworthy legal record.",
-        "On inventory, three constraints work together. CHECK (available >= 0) is the hard floor that makes oversell impossible at the storage layer. CHECK (available = on_hand - reserved) keeps the three counters internally consistent so no code path can quietly desynchronize them. And the EXCLUDE constraint with a WHERE (status = 'CONFIRMED') predicate guarantees at most one active reservation per order line — a check-then-write race can no longer create a second hold. During the confirm transaction the application also takes SELECT ... FOR UPDATE on the inventory_items row and acquires locks in sku_id order to avoid the deadlocks we hit early on.",
-        "On the outbox, uq_outbox_event_identity (event_type, external_id) gives every consumer a stable idempotency key, and the partial index ix_outbox_undispatched keeps the relay's poll cheap regardless of how many millions of dispatched rows have accumulated. The settlement ledger applies the same idea downstream with a UNIQUE on LedgerEntry per (group, type), which is what stopped the double-settlement incident when a carrier webhook retried ShipmentDelivered."
+        "이 선택들 중 몇 가지는 구조적으로 핵심적이어서 따로 짚어둘 만합니다. order_lines의 amount_krw는 STORED 생성 컬럼(generated column)입니다. 데이터베이스가 qty * unit_price_krw를 계산하므로, 버그 있는 애플리케이션 코드가 직접 값을 설정하려 해도 라인 합계가 입력값에서 결코 어긋날 수 없습니다. unit_price_krw는 동결된 스냅샷이며, 주문 생성 이후 시스템의 어떤 것도 이를 갱신하지 않습니다. 바로 이 점이 OrderLine을 신뢰할 수 있는 법적 기록으로 만들어 줍니다.",
+        "재고 쪽에서는 세 가지 제약 조건이 함께 작동합니다. CHECK (available >= 0)은 저장 계층에서 오버셀(초과 판매)을 불가능하게 만드는 하한선입니다. CHECK (available = on_hand - reserved)은 세 카운터가 내부적으로 정합성을 유지하도록 하여, 어떤 코드 경로도 이들을 몰래 어긋나게 만들 수 없게 합니다. 그리고 WHERE (status = 'CONFIRMED') 조건이 붙은 EXCLUDE 제약 조건은 주문 라인당 활성 예약을 최대 하나로 보장합니다. 즉, 확인 후 기록(check-then-write) 경합이 더 이상 두 번째 홀드를 만들어 낼 수 없습니다. 확정(confirm) 트랜잭션 동안 애플리케이션은 inventory_items 행에 SELECT ... FOR UPDATE를 걸고, 초기에 겪었던 데드락을 피하기 위해 sku_id 순서로 락을 획득합니다.",
+        "아웃박스 쪽에서는 uq_outbox_event_identity (event_type, external_id)가 모든 컨슈머에게 안정적인 멱등 키를 제공하고, 부분 인덱스 ix_outbox_undispatched는 dispatched된 행이 수백만 건 쌓이더라도 릴레이의 폴링을 저렴하게 유지합니다. 정산 원장은 하류(downstream)에서 동일한 아이디어를 적용하여 LedgerEntry에 (group, type)별 UNIQUE를 두는데, 이것이 바로 캐리어 웹훅이 ShipmentDelivered를 재시도했을 때 발생한 이중 정산 사고를 막아 준 장치입니다."
       ]
     },
     {
       "kind": "table",
-      "caption": "Key indexes and the access pattern each one serves.",
-      "columns": ["Schema.Table", "Index", "Definition", "Purpose"],
+      "caption": "주요 인덱스와 각각이 담당하는 접근 패턴입니다.",
+      "columns": ["스키마.테이블", "인덱스", "정의", "목적"],
       "rows": [
-        ["ordering.orders", "ix_orders_org_status", "(org_id, status, placed_at DESC)", "Buyer order-history and ops dashboards, already org-scoped; supports the storefront p95 < 300ms target."],
-        ["ordering.fulfillment_groups", "ix_groups_supplier_status", "(supplier_org_id, status, created_at)", "Supplier portal worklist: 'show me everything AWAITING_SUPPLIER for my org' without a full scan."],
-        ["ordering.fulfillment_groups", "uq_group_per_supplier", "UNIQUE (order_id, supplier_org_id)", "Enforces the deterministic per-supplier split; one group per supplier per order."],
-        ["ordering.order_lines", "uq_line_per_sku", "UNIQUE (fulfillment_group_id, sku_id)", "Forces cart-time merge; prevents duplicate SKU lines that would break settlement math."],
-        ["inventory.inventory_items", "uq_inventory_sku_location", "UNIQUE (sku_id, location_id)", "One stock row per SKU per DC; the row that confirm locks with SELECT ... FOR UPDATE."],
-        ["inventory.stock_reservations", "uq_active_reservation_per_line", "EXCLUDE (order_line_id) WHERE status='CONFIRMED'", "Anti-oversell guard: at most one active hold per line."],
-        ["inventory.stock_reservations", "ix_reservations_expiry", "(expires_at) WHERE status='CONFIRMED'", "Drives the expiry sweeper that releases abandoned holds."],
-        ["messaging.outbox_events", "uq_outbox_event_identity", "UNIQUE (event_type, external_id)", "Consumer idempotency key; dedups SNS/SQS redeliveries."],
-        ["messaging.outbox_events", "ix_outbox_undispatched", "(occurred_at) WHERE dispatched_at IS NULL", "Cheap relay polling over the small undispatched set only."]
+        ["ordering.orders", "ix_orders_org_status", "(org_id, status, placed_at DESC)", "이미 org 단위로 스코핑된 구매자 주문 이력 및 운영 대시보드. 스토어프론트 p95 < 300ms 목표를 뒷받침합니다."],
+        ["ordering.fulfillment_groups", "ix_groups_supplier_status", "(supplier_org_id, status, created_at)", "공급사 포털 작업 목록: 전체 스캔 없이 '내 조직의 AWAITING_SUPPLIER 항목을 모두 보여줘'를 처리합니다."],
+        ["ordering.fulfillment_groups", "uq_group_per_supplier", "UNIQUE (order_id, supplier_org_id)", "결정론적 공급사별 분할을 강제합니다. 주문당 공급사마다 그룹은 하나입니다."],
+        ["ordering.order_lines", "uq_line_per_sku", "UNIQUE (fulfillment_group_id, sku_id)", "장바구니 시점 병합을 강제합니다. 정산 계산을 깨뜨릴 중복 SKU 라인을 방지합니다."],
+        ["inventory.inventory_items", "uq_inventory_sku_location", "UNIQUE (sku_id, location_id)", "DC(물류센터)별 SKU당 재고 행 하나. 확정(confirm)이 SELECT ... FOR UPDATE로 락을 거는 행입니다."],
+        ["inventory.stock_reservations", "uq_active_reservation_per_line", "EXCLUDE (order_line_id) WHERE status='CONFIRMED'", "오버셀 방지 가드: 라인당 활성 홀드는 최대 하나입니다."],
+        ["inventory.stock_reservations", "ix_reservations_expiry", "(expires_at) WHERE status='CONFIRMED'", "버려진 홀드를 해제하는 만료 스위퍼(sweeper)를 구동합니다."],
+        ["messaging.outbox_events", "uq_outbox_event_identity", "UNIQUE (event_type, external_id)", "컨슈머 멱등 키. SNS/SQS 재전송을 중복 제거합니다."],
+        ["messaging.outbox_events", "ix_outbox_undispatched", "(occurred_at) WHERE dispatched_at IS NULL", "작은 미발송 집합만을 대상으로 한 저렴한 릴레이 폴링."]
       ]
     },
     {
       "kind": "callout",
       "tone": "insight",
-      "title": "The constraints are the correctness layer",
-      "body": "The invariants that actually keep KH solvent live in the schema, not in TypeScript. CHECK (available >= 0) makes overselling a SKU physically impossible at commit. CHECK (available = on_hand - reserved) stops the stock counters from drifting apart. EXCLUDE (order_line_id) WHERE status='CONFIRMED' permits at most one active hold per line, neutralizing the check-then-write race that caused ~12 oversell incidents/month before — now zero. The generated amount_krw column means a line total can never disagree with qty x unit_price_krw. uq_outbox_event_identity and the ledger's UNIQUE per (group, type) make event handlers idempotent by construction, which is how double settlement went away. Application code can have bugs; these rows still cannot enter an incorrect state. That is the whole bet: push every money- or stock-protecting invariant down to where the database can reject the bad write, and treat the service layer as orchestration on top of a store that refuses to lie."
+      "title": "제약 조건이 곧 정합성 계층입니다",
+      "body": "KH를 실제로 건전하게 유지하는 불변식은 TypeScript가 아니라 스키마에 있습니다. CHECK (available >= 0)은 커밋 시점에 SKU의 초과 판매를 물리적으로 불가능하게 만듭니다. CHECK (available = on_hand - reserved)은 재고 카운터들이 서로 어긋나는 것을 막습니다. EXCLUDE (order_line_id) WHERE status='CONFIRMED'은 라인당 활성 홀드를 최대 하나만 허용하여, 이전에 월 약 12건의 오버셀 사고를 유발했던 확인 후 기록(check-then-write) 경합을 무력화했습니다. 지금은 0건입니다. 생성 컬럼 amount_krw는 라인 합계가 qty x unit_price_krw와 절대 불일치할 수 없게 합니다. uq_outbox_event_identity와 원장의 (group, type)별 UNIQUE는 이벤트 핸들러를 구조적으로 멱등하게 만들며, 이것이 이중 정산이 사라진 방식입니다. 애플리케이션 코드에는 버그가 있을 수 있지만, 이 행들은 그래도 잘못된 상태로 진입할 수 없습니다. 핵심 베팅은 바로 이것입니다. 돈이나 재고를 보호하는 모든 불변식을 데이터베이스가 잘못된 쓰기를 거부할 수 있는 지점까지 끌어내리고, 서비스 계층은 거짓말을 거부하는 저장소 위의 오케스트레이션으로 취급하는 것입니다."
     },
     {
       "kind": "stats",
       "metrics": [
-        {"label": "Oversell incidents", "value": "0 / month", "delta": "from ~12 / month", "note": "available >= 0 CHECK + single-active-reservation EXCLUDE + FOR UPDATE confirm."},
-        {"label": "Order-placement error rate", "value": "0.1%", "delta": "from 2.3%", "note": "One-transaction place: orders + groups + lines + outbox commit atomically."},
-        {"label": "Checkout p95", "value": "240 ms", "delta": "from 820 ms", "note": "org-scoped indexes and re-pricing from Postgres rather than search."},
-        {"label": "Settlement disputes", "value": "down ~70%", "note": "integer KRW math, immutable OrderLine snapshots, append-only ledger."}
+        {"label": "오버셀 사고", "value": "0 / month", "delta": "from ~12 / month", "note": "available >= 0 CHECK + 단일 활성 예약 EXCLUDE + FOR UPDATE 확정."},
+        {"label": "주문 생성 오류율", "value": "0.1%", "delta": "from 2.3%", "note": "단일 트랜잭션 생성: orders + groups + lines + outbox가 원자적으로 커밋됩니다."},
+        {"label": "체크아웃 p95", "value": "240 ms", "delta": "from 820 ms", "note": "org 단위 인덱스와 검색이 아닌 Postgres로부터의 재가격 산정."},
+        {"label": "정산 분쟁", "value": "약 70% 감소", "note": "정수 KRW 연산, 불변 OrderLine 스냅샷, 추가 전용(append-only) 원장."}
       ]
     }
   ]

@@ -35,15 +35,15 @@ const sections = [
 export const khWholesalePlatform: CaseStudy = {
   meta: {
     slug: "kh-wholesale-platform",
-    title: "KH Wholesale Platform",
+    title: "KH 도매 플랫폼",
     tagline:
-      "Designing and shipping a multi-supplier B2B wholesale platform — order orchestration, inventory correctness, fulfillment, and supplier settlement, from architecture to production.",
+      "다중 공급사 B2B 도매 플랫폼을 설계하고 출시하기 — 주문 오케스트레이션, 재고 정합성, 풀필먼트, 공급사 정산까지, 아키텍처에서 프로덕션 운영에 이르는 기록.",
     summary:
-      "An engineering case study on KH Wholesale: the architecture, domain model, order and shipment flows, supplier approval workflow, the technical decisions and trade-offs, and the production incidents that shaped a Postgres-backed modular monolith handling 9,000 orders a day.",
-    role: "Lead Full Stack Engineer",
-    timeline: "14 months · 2023–2024",
-    team: "6 engineers",
-    domain: "B2B Wholesale · Food & Grocery",
+      "KH 도매 플랫폼 엔지니어링 케이스 스터디: 시스템 아키텍처, 도메인 모델, 주문·배송 흐름, 공급사 승인 워크플로, 기술적 의사결정과 트레이드오프, 그리고 하루 9,000건의 주문을 처리하는 PostgreSQL 기반 모듈러 모놀리스를 빚어낸 운영 장애들.",
+    role: "리드 풀스택 엔지니어",
+    timeline: "14개월 · 2023–2024",
+    team: "엔지니어 6명",
+    domain: "B2B 도매 · 식품/그로서리",
     stack: [
       "TypeScript",
       "Next.js",
@@ -55,10 +55,10 @@ export const khWholesalePlatform: CaseStudy = {
       "AWS",
     ],
     highlights: [
-      { label: "Oversell incidents", value: "0" },
-      { label: "Checkout p95", value: "240ms" },
-      { label: "Supplier onboarding", value: "18d → 4d" },
-      { label: "Peak orders / day", value: "9,000" },
+      { label: "오버셀 건수", value: "0" },
+      { label: "결제 p95", value: "240ms" },
+      { label: "공급사 온보딩", value: "18일 → 4일" },
+      { label: "최대 주문/일", value: "9,000" },
     ],
   },
   sections,

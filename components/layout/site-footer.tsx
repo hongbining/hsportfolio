@@ -38,10 +38,10 @@ export function SiteFooter() {
 
         <div className="flex flex-col gap-2 border-t border-border/60 py-6 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-muted-foreground">
-            © {year} {siteConfig.name}. All rights reserved.
+            © {year} {siteConfig.name}.
           </p>
           <p className="text-xs text-muted-foreground">
-            Built with Next.js, Tailwind CSS, and shadcn/ui.
+            Next.js · Tailwind CSS · shadcn/ui로 제작
           </p>
         </div>
       </Container>

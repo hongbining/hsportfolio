@@ -7,7 +7,7 @@ import { siteConfig } from "@/lib/site-config"
 function Experience() {
   return (
     <div>
-      <Overline as="h3">Experience</Overline>
+      <Overline as="h3">경력</Overline>
       <ul className="mt-4 flex flex-col">
         {siteConfig.experience.map((item) => (
           <li
@@ -46,7 +46,7 @@ export function About() {
             <SectionHeading
               id="about-heading"
               eyebrow="About"
-              title={`${siteConfig.yearsOfExperience} years building software teams can rely on.`}
+              title={`${siteConfig.yearsOfExperience}년간, 팀이 믿고 맡길 수 있는 소프트웨어를 만들어 왔습니다.`}
             />
           </Reveal>
         </div>

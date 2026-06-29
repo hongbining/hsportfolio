@@ -3,7 +3,7 @@ import { siteConfig } from "@/lib/site-config"
 /** Desktop in-page navigation. */
 export function MainNav() {
   return (
-    <nav aria-label="Primary" className="hidden items-center gap-1 md:flex">
+    <nav aria-label="주요 메뉴" className="hidden items-center gap-1 md:flex">
       {siteConfig.nav.map((item) => (
         <a
           key={item.href}

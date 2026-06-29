@@ -89,7 +89,7 @@ export default async function CaseStudyPage({
           className="inline-flex items-center gap-1 rounded-sm text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
         >
           <ArrowLeft className="size-4" aria-hidden="true" />
-          Back to work
+          작업 목록으로
         </Link>
 
         <header className="mt-8 max-w-3xl">
@@ -113,15 +113,15 @@ export default async function CaseStudyPage({
         </header>
 
         <div className="mt-10">
-          <CaseSection title="Business problem">
+          <CaseSection title="해결하려는 문제">
             <p className="text-base text-pretty">{project.problem}</p>
           </CaseSection>
 
-          <CaseSection title="Architecture">
+          <CaseSection title="시스템 아키텍처">
             <p className="text-base text-pretty">{project.architecture}</p>
           </CaseSection>
 
-          <CaseSection title="Technical decisions">
+          <CaseSection title="기술적 의사결정">
             <TermList
               items={project.decisions.map((d) => ({
                 term: d.title,
@@ -130,7 +130,7 @@ export default async function CaseStudyPage({
             />
           </CaseSection>
 
-          <CaseSection title="Trade-offs">
+          <CaseSection title="트레이드오프">
             <TermList
               items={project.tradeoffs.map((t) => ({
                 term: t.choice,
@@ -139,7 +139,7 @@ export default async function CaseStudyPage({
             />
           </CaseSection>
 
-          <CaseSection title="Troubleshooting">
+          <CaseSection title="트러블슈팅">
             <TermList
               items={project.troubleshooting.map((t) => ({
                 term: t.issue,
@@ -148,7 +148,7 @@ export default async function CaseStudyPage({
             />
           </CaseSection>
 
-          <CaseSection title="Impact">
+          <CaseSection title="성과">
             <ul className="space-y-3">
               {project.impact.map((item) => (
                 <li key={item} className="flex gap-2 text-pretty">
@@ -162,7 +162,7 @@ export default async function CaseStudyPage({
             </ul>
           </CaseSection>
 
-          <CaseSection title="Lessons learned">
+          <CaseSection title="배운 점">
             <ul className="space-y-3">
               {project.lessonsLearned.map((lesson) => (
                 <li key={lesson} className="flex gap-2 text-pretty">
@@ -180,11 +180,11 @@ export default async function CaseStudyPage({
           <Button asChild size="xl">
             <a href={`mailto:${siteConfig.email}`}>
               <Mail className="size-4" aria-hidden="true" />
-              Discuss a project
+              프로젝트 문의하기
             </a>
           </Button>
           <Button asChild variant="outline" size="xl">
-            <Link href="/#work">See more work</Link>
+            <Link href="/#work">다른 프로젝트 보기</Link>
           </Button>
         </div>
       </article>

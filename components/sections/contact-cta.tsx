@@ -25,15 +25,15 @@ export function ContactCta() {
             <SectionHeading
               id="contact-heading"
               align="center"
-              eyebrow="Contact"
-              title="Let's build something reliable."
-              description="Have a system that needs to scale, a team to level up, or a role to fill? I'd like to hear about it."
+              eyebrow="연락처"
+              title="신뢰할 수 있는 무언가를 함께 만들어요."
+              description="확장이 필요한 시스템, 한 단계 끌어올릴 팀, 또는 채용할 자리가 있으신가요? 편하게 연락 주세요."
             />
             <div className="flex flex-wrap items-center justify-center gap-3">
               <Button asChild size="xl">
                 <a href={`mailto:${siteConfig.email}`}>
                   <Mail className="size-4" aria-hidden="true" />
-                  Email me
+                  이메일 보내기
                 </a>
               </Button>
               {linkedin ? (
@@ -43,7 +43,7 @@ export function ContactCta() {
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    Connect on LinkedIn
+                    LinkedIn에서 연결하기
                     <ArrowUpRight className="size-4" aria-hidden="true" />
                   </a>
                 </Button>

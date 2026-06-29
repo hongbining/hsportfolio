@@ -1,18 +1,18 @@
 {
   "id": "domain-model",
-  "title": "Domain Model",
-  "summary": "The aggregates, fields, and invariants behind KH Wholesale — anchored on the FulfillmentGroup (per-supplier sub-order) as the spine that ties ordering, fulfillment, and settlement together.",
+  "title": "도메인 모델",
+  "summary": "KH Wholesale를 떠받치는 애그리거트, 필드, 그리고 불변식입니다. 주문, 풀필먼트(이행), 정산을 하나로 엮는 척추 역할을 하는 FulfillmentGroup(공급사별 하위 주문)을 중심으로 설계했습니다.",
   "blocks": [
     {
       "kind": "lead",
-      "text": "I modeled KH Wholesale as a set of strict bounded contexts sharing one Postgres database, and the single decision that shaped everything downstream was splitting every buyer Order into one FulfillmentGroup per supplier."
+      "text": "KH Wholesale는 하나의 Postgres 데이터베이스를 공유하는 엄격한 바운디드 컨텍스트의 집합으로 모델링했으며, 이후 모든 설계를 좌우한 단 하나의 결정은 모든 구매자 Order를 공급사별로 하나의 FulfillmentGroup으로 분할한 것이었습니다."
     },
     {
       "kind": "prose",
       "paragraphs": [
-        "KH is a managed marketplace: a buyer fills one Cart that can span many suppliers, and KH orchestrates pricing, credit, inventory, fulfillment, and settlement behind it. That single-cart-many-suppliers reality is the central modeling tension. A buyer thinks in terms of one Order; a supplier only ever acts on the part of that Order that belongs to them; and settlement has to pay each supplier independently for exactly the lines they fulfilled. If you model only the buyer-level Order, every one of those concerns leaks into ad-hoc filtering and conditional logic.",
-        "So the spine of the domain is the FulfillmentGroup — the per-supplier sub-order created when an Order is placed. The Order is a thin buyer-level header whose status is derived, not stored authoritatively; the FulfillmentGroup is where real work happens. Suppliers accept or reject a FulfillmentGroup, inventory is reserved per FulfillmentGroup line, Shipments are created against a FulfillmentGroup, and a Settlement is computed per FulfillmentGroup. An OrderLine therefore belongs to exactly one FulfillmentGroup (never directly to the Order), which makes ownership unambiguous at every layer: RBAC scoping, the supplier portal's work queue, the carrier handoff, and the payout ledger all key off the same aggregate.",
-        "The ubiquitous language is deliberately small and shared across all three frontends (buyer storefront, supplier portal, ops admin) and the backend modules. An Organization is either a buyer or a supplier (distinguished by org_type); Users belong to orgs through a Membership that carries a Role; a Sku is the sellable unit and always belongs to one supplier Organization, which is what makes the per-supplier split mechanical rather than heuristic — we group a Cart's items by sku.supplier_org_id. Money is integer KRW stored as bigint, and prices are snapshotted onto the OrderLine at placement so the amount a buyer agreed to is immutable regardless of later price-list changes. State lives in explicit, table-driven state machines rather than scattered booleans."
+        "KH는 관리형 마켓플레이스입니다. 구매자는 여러 공급사에 걸칠 수 있는 하나의 Cart를 채우고, KH는 그 뒤에서 가격 책정, 신용, 재고, 풀필먼트, 정산을 오케스트레이션합니다. 이 '하나의 장바구니에 여러 공급사'라는 현실이 모델링의 핵심 긴장 지점입니다. 구매자는 하나의 Order 단위로 사고하고, 공급사는 그 Order 중 자신에게 속한 부분에 대해서만 행동하며, 정산은 각 공급사가 실제로 이행한 라인에 정확히 맞춰 독립적으로 지급해야 합니다. 구매자 수준의 Order만 모델링한다면, 이 모든 관심사가 임시방편적인 필터링과 조건 분기 로직으로 새어 나가게 됩니다.",
+        "그래서 도메인의 척추는 FulfillmentGroup입니다. Order가 생성될 때 만들어지는 공급사별 하위 주문이죠. Order는 상태가 권위 있게 저장되지 않고 파생되는, 얇은 구매자 수준 헤더에 불과합니다. 실제 작업이 일어나는 곳은 FulfillmentGroup입니다. 공급사는 FulfillmentGroup을 수락하거나 거부하고, 재고는 FulfillmentGroup 라인 단위로 예약되며, Shipment는 FulfillmentGroup에 대해 생성되고, Settlement는 FulfillmentGroup 단위로 계산됩니다. 따라서 OrderLine은 정확히 하나의 FulfillmentGroup에 속하며(Order에 직접 속하는 일은 결코 없습니다), 이 덕분에 모든 계층에서 소유 관계가 명확해집니다. RBAC 범위 지정, 공급사 포털의 작업 큐, 운송사 인계, 지급 원장이 모두 같은 애그리거트를 키로 사용합니다.",
+        "유비쿼터스 언어는 의도적으로 작게 유지했으며 세 개의 프론트엔드(구매자 스토어프론트, 공급사 포털, 운영 어드민)와 백엔드 모듈 전체에서 공유됩니다. Organization은 구매자이거나 공급사입니다(org_type으로 구분). User는 Role을 담은 Membership을 통해 조직에 속합니다. Sku는 판매 가능한 단위이며 항상 하나의 공급사 Organization에 속하는데, 바로 이 점이 공급사별 분할을 휴리스틱이 아닌 기계적인 작업으로 만들어 줍니다. Cart의 품목을 sku.supplier_org_id 기준으로 그룹화하면 되기 때문입니다. 금액은 bigint로 저장되는 정수 KRW이고, 가격은 주문 생성 시점에 OrderLine에 스냅샷으로 고정되어, 구매자가 합의한 금액은 이후 가격표가 변경되더라도 불변으로 유지됩니다. 상태는 흩어진 불리언이 아니라 명시적이고 테이블 기반인 상태 머신으로 관리됩니다."
       ]
     },
     {
@@ -20,226 +20,226 @@
       "entities": [
         {
           "name": "Organization",
-          "description": "A buyer OR a supplier tenant. The root of row-level isolation — almost every other row carries org_id and is scoped to it.",
+          "description": "구매자 또는 공급사 테넌트입니다. 행 수준 격리의 루트로, 거의 모든 다른 행이 org_id를 지니고 이 값으로 범위가 한정됩니다.",
           "fields": [
-            { "name": "id", "type": "uuid", "note": "primary key" },
+            { "name": "id", "type": "uuid", "note": "기본 키" },
             { "name": "org_type", "type": "enum", "note": "'buyer' | 'supplier'" },
             { "name": "legal_name", "type": "text" },
-            { "name": "business_registration_no", "type": "text", "note": "validated via NTS gov API during onboarding" },
-            { "name": "credit_limit_krw", "type": "bigint", "note": "buyers only; checked synchronously at checkout" },
-            { "name": "status", "type": "enum", "note": "'active' | 'suspended'; suppliers reach 'active' only via the approval workflow" }
+            { "name": "business_registration_no", "type": "text", "note": "온보딩 시 국세청(NTS) 정부 API로 검증" },
+            { "name": "credit_limit_krw", "type": "bigint", "note": "구매자 전용. 체크아웃 시 동기적으로 확인" },
+            { "name": "status", "type": "enum", "note": "'active' | 'suspended'. 공급사는 승인 워크플로를 거쳐야만 'active'에 도달" }
           ],
           "relations": [
-            "1 Organization has many Memberships (its Users)",
-            "A supplier Organization owns many Skus",
-            "A buyer Organization owns many Carts and Orders"
+            "1 Organization는 다수의 Membership(소속 User)을 가짐",
+            "공급사 Organization은 다수의 Sku를 소유",
+            "구매자 Organization은 다수의 Cart와 Order를 소유"
           ]
         },
         {
           "name": "Membership",
-          "description": "The User-to-Organization join that carries the Role. RBAC and tenant scoping resolve through Membership.",
+          "description": "Role을 담은 User-Organization 연결입니다. RBAC와 테넌트 범위 지정이 Membership을 통해 해석됩니다.",
           "fields": [
             { "name": "id", "type": "uuid" },
             { "name": "user_id", "type": "uuid", "note": "FK -> User" },
             { "name": "org_id", "type": "uuid", "note": "FK -> Organization" },
-            { "name": "role", "type": "enum", "note": "e.g. 'buyer_admin', 'buyer_purchaser', 'supplier_admin', 'supplier_fulfiller', 'ops_admin'" },
+            { "name": "role", "type": "enum", "note": "예: 'buyer_admin', 'buyer_purchaser', 'supplier_admin', 'supplier_fulfiller', 'ops_admin'" },
             { "name": "status", "type": "enum", "note": "'active' | 'revoked'" }
           ],
           "relations": [
-            "Many Memberships per User (a user may belong to several orgs)",
-            "UNIQUE (user_id, org_id) — one membership per user per org"
+            "User당 다수의 Membership(한 사용자가 여러 조직에 속할 수 있음)",
+            "UNIQUE (user_id, org_id) — 사용자-조직당 하나의 멤버십"
           ]
         },
         {
           "name": "Sku",
-          "description": "The sellable unit. Belongs to exactly one supplier Organization — this ownership is what drives the per-supplier Order split.",
+          "description": "판매 가능한 단위입니다. 정확히 하나의 공급사 Organization에 속하며, 이 소유 관계가 공급사별 Order 분할을 이끄는 동력입니다.",
           "fields": [
             { "name": "id", "type": "uuid" },
             { "name": "product_id", "type": "uuid", "note": "FK -> Product" },
             { "name": "supplier_org_id", "type": "uuid", "note": "FK -> Organization(org_type='supplier')" },
-            { "name": "sku_code", "type": "text", "note": "UNIQUE per supplier" },
-            { "name": "uom", "type": "text", "note": "unit of measure, e.g. CASE/EA" },
-            { "name": "version", "type": "bigint", "note": "monotonic; used as the per-SKU version guard in the OpenSearch projection" }
+            { "name": "sku_code", "type": "text", "note": "공급사별 UNIQUE" },
+            { "name": "uom", "type": "text", "note": "단위(unit of measure), 예: CASE/EA" },
+            { "name": "version", "type": "bigint", "note": "단조 증가. OpenSearch 프로젝션에서 SKU별 버전 가드로 사용" }
           ],
           "relations": [
-            "Many Skus per Product",
-            "1 Sku has many InventoryItems (one per location/DC)",
-            "Referenced by CartItem, OrderLine, StockReservation"
+            "Product당 다수의 Sku",
+            "1 Sku는 다수의 InventoryItem을 가짐(위치/DC당 하나)",
+            "CartItem, OrderLine, StockReservation에서 참조됨"
           ]
         },
         {
           "name": "ContractPrice",
-          "description": "Buyer-specific negotiated price for a Sku, overriding the supplier's PriceList. Resolved during pricing snapshot at placement and re-checked at supplier confirm.",
+          "description": "특정 Sku에 대한 구매자별 협상 가격으로, 공급사의 PriceList를 재정의합니다. 주문 생성 시 가격 스냅샷 과정에서 해석되고 공급사 확정 시 재확인됩니다.",
           "fields": [
             { "name": "id", "type": "uuid" },
             { "name": "buyer_org_id", "type": "uuid", "note": "FK -> Organization(org_type='buyer')" },
             { "name": "sku_id", "type": "uuid", "note": "FK -> Sku" },
-            { "name": "unit_price_krw", "type": "bigint", "note": "integer KRW; no minor units" },
+            { "name": "unit_price_krw", "type": "bigint", "note": "정수 KRW. 보조 단위 없음" },
             { "name": "valid_from", "type": "timestamptz" },
-            { "name": "valid_to", "type": "timestamptz", "note": "nullable; open-ended contracts" }
+            { "name": "valid_to", "type": "timestamptz", "note": "nullable. 종료일 없는 개방형 계약" }
           ],
           "relations": [
-            "Falls back to PriceList when no active ContractPrice exists for (buyer, sku)",
-            "Resolved value is snapshotted onto OrderLine.unit_price_krw"
+            "(buyer, sku)에 활성 ContractPrice가 없으면 PriceList로 폴백",
+            "해석된 값은 OrderLine.unit_price_krw에 스냅샷으로 고정됨"
           ]
         },
         {
           "name": "Order",
-          "description": "Buyer-level header. Intentionally thin: its status is DERIVED from the statuses of its FulfillmentGroups, not stored as the source of truth.",
+          "description": "구매자 수준 헤더입니다. 의도적으로 얇게 설계했습니다. 상태는 진실의 원천으로 저장되는 것이 아니라 소속 FulfillmentGroup들의 상태에서 파생됩니다.",
           "fields": [
             { "name": "id", "type": "uuid" },
             { "name": "buyer_org_id", "type": "uuid", "note": "FK -> Organization" },
             { "name": "placed_by_user_id", "type": "uuid", "note": "FK -> User" },
-            { "name": "status", "type": "enum", "note": "DRAFT -> PLACED -> derived PARTIALLY_* / COMPLETED / CANCELLED" },
-            { "name": "placed_at", "type": "timestamptz", "note": "null while DRAFT (cart)" },
-            { "name": "total_krw", "type": "bigint", "note": "sum of snapshotted OrderLine extended amounts" }
+            { "name": "status", "type": "enum", "note": "DRAFT -> PLACED -> 파생된 PARTIALLY_* / COMPLETED / CANCELLED" },
+            { "name": "placed_at", "type": "timestamptz", "note": "DRAFT(장바구니)인 동안 null" },
+            { "name": "total_krw", "type": "bigint", "note": "스냅샷된 OrderLine 합산 금액의 총합" }
           ],
           "relations": [
-            "1 Order is SPLIT into many FulfillmentGroups (one per distinct supplier in the cart)",
-            "Order has no direct OrderLines — lines hang off FulfillmentGroups"
+            "1 Order는 다수의 FulfillmentGroup으로 분할됨(장바구니 내 공급사별로 하나씩)",
+            "Order는 직접적인 OrderLine을 갖지 않음 — 라인은 FulfillmentGroup에 매달림"
           ]
         },
         {
           "name": "FulfillmentGroup",
-          "description": "THE SPINE. The per-supplier sub-order that suppliers actually act on; the unit of inventory reservation, shipment, and settlement.",
+          "description": "척추입니다. 공급사가 실제로 행동하는 공급사별 하위 주문이며, 재고 예약, 출고, 정산의 단위입니다.",
           "fields": [
             { "name": "id", "type": "uuid" },
             { "name": "order_id", "type": "uuid", "note": "FK -> Order" },
             { "name": "supplier_org_id", "type": "uuid", "note": "FK -> Organization(org_type='supplier')" },
-            { "name": "status", "type": "enum", "note": "AWAITING_SUPPLIER -> ACCEPTED -> FULFILLING -> SHIPPED -> DELIVERED -> SETTLED; branches REJECTED, CANCELLED, PARTIALLY_SHIPPED" },
-            { "name": "subtotal_krw", "type": "bigint", "note": "supplier-scoped subtotal, integer KRW" },
-            { "name": "accepted_at", "type": "timestamptz", "note": "null until supplier accepts; re-price/validate happens here" }
+            { "name": "status", "type": "enum", "note": "AWAITING_SUPPLIER -> ACCEPTED -> FULFILLING -> SHIPPED -> DELIVERED -> SETTLED. 분기: REJECTED, CANCELLED, PARTIALLY_SHIPPED" },
+            { "name": "subtotal_krw", "type": "bigint", "note": "공급사 범위의 소계, 정수 KRW" },
+            { "name": "accepted_at", "type": "timestamptz", "note": "공급사가 수락하기 전까지 null. 재가격 책정/검증이 여기서 일어남" }
           ],
           "relations": [
-            "Many FulfillmentGroups per Order; UNIQUE (order_id, supplier_org_id)",
-            "1 FulfillmentGroup has many OrderLines",
-            "1 FulfillmentGroup has many Shipments and at most one Settlement"
+            "Order당 다수의 FulfillmentGroup. UNIQUE (order_id, supplier_org_id)",
+            "1 FulfillmentGroup은 다수의 OrderLine을 가짐",
+            "1 FulfillmentGroup은 다수의 Shipment와 최대 하나의 Settlement를 가짐"
           ]
         },
         {
           "name": "OrderLine",
-          "description": "A single line of demand. Belongs to exactly one FulfillmentGroup. Carries the immutable price snapshot.",
+          "description": "단일 수요 라인입니다. 정확히 하나의 FulfillmentGroup에 속하며, 불변 가격 스냅샷을 지닙니다.",
           "fields": [
             { "name": "id", "type": "uuid" },
-            { "name": "fulfillment_group_id", "type": "uuid", "note": "FK -> FulfillmentGroup (NOT NULL; never points at Order directly)" },
+            { "name": "fulfillment_group_id", "type": "uuid", "note": "FK -> FulfillmentGroup (NOT NULL. Order를 직접 가리키는 일은 없음)" },
             { "name": "sku_id", "type": "uuid", "note": "FK -> Sku" },
             { "name": "qty", "type": "integer", "note": "CHECK (qty > 0)" },
-            { "name": "unit_price_krw", "type": "bigint", "note": "SNAPSHOTTED at placement; immutable thereafter" },
-            { "name": "line_total_krw", "type": "bigint", "note": "integer math: qty * unit_price_krw" }
+            { "name": "unit_price_krw", "type": "bigint", "note": "주문 생성 시 스냅샷됨. 이후 불변" },
+            { "name": "line_total_krw", "type": "bigint", "note": "정수 연산: qty * unit_price_krw" }
           ],
           "relations": [
-            "Exactly one FulfillmentGroup per OrderLine",
-            "References one Sku; mirrors to ShipmentLine when shipped"
+            "OrderLine당 정확히 하나의 FulfillmentGroup",
+            "하나의 Sku를 참조. 출고 시 ShipmentLine으로 미러링됨"
           ]
         },
         {
           "name": "InventoryItem",
-          "description": "Authoritative stock per Sku per location/DC. The database — not the app — is the source of truth for availability.",
+          "description": "Sku별, 위치/DC별 권위 있는 재고입니다. 가용성의 진실의 원천은 애플리케이션이 아니라 데이터베이스입니다.",
           "fields": [
             { "name": "id", "type": "uuid" },
             { "name": "sku_id", "type": "uuid", "note": "FK -> Sku" },
-            { "name": "location_id", "type": "uuid", "note": "DC / warehouse" },
-            { "name": "available", "type": "integer", "note": "CHECK (available >= 0) — guarantees no oversell at the DB" },
-            { "name": "version", "type": "bigint", "note": "optimistic-lock version; bumped under SELECT ... FOR UPDATE on confirm" }
+            { "name": "location_id", "type": "uuid", "note": "DC / 창고" },
+            { "name": "available", "type": "integer", "note": "CHECK (available >= 0) — DB 차원에서 오버셀(초과 판매) 방지를 보장" },
+            { "name": "version", "type": "bigint", "note": "낙관적 잠금 버전. 확정 시 SELECT ... FOR UPDATE 하에서 증가" }
           ],
           "relations": [
             "UNIQUE (sku_id, location_id)",
-            "Decremented atomically when a StockReservation is confirmed at allocation"
+            "할당 시 StockReservation이 확정되면 원자적으로 감소"
           ]
         },
         {
           "name": "StockReservation",
-          "description": "Two-phase hold. Phase 1 is a Redis soft-hold with TTL at checkout; phase 2 is this confirmed Postgres row, written under a row lock at supplier accept/allocation.",
+          "description": "2단계 홀드입니다. 1단계는 체크아웃 시 TTL이 걸린 Redis 소프트 홀드이고, 2단계는 공급사 수락/할당 시 행 잠금 하에 기록되는 이 확정된 Postgres 행입니다.",
           "fields": [
             { "name": "id", "type": "uuid" },
             { "name": "sku_id", "type": "uuid", "note": "FK -> Sku" },
             { "name": "fulfillment_group_id", "type": "uuid", "note": "FK -> FulfillmentGroup" },
             { "name": "qty", "type": "integer", "note": "CHECK (qty > 0)" },
             { "name": "status", "type": "enum", "note": "'soft' (Redis TTL) | 'confirmed' (Postgres) | 'expired'" },
-            { "name": "expires_at", "type": "timestamptz", "note": "swept by a reservation-expiry job; partial UNIQUE on active reservations" }
+            { "name": "expires_at", "type": "timestamptz", "note": "예약 만료 잡이 정리함. 활성 예약에 대한 부분 UNIQUE" }
           ],
           "relations": [
-            "Confirms against an InventoryItem under SELECT ... FOR UPDATE",
-            "Locks acquired in sku_id order to prevent deadlocks on multi-line orders"
+            "SELECT ... FOR UPDATE 하에서 InventoryItem에 대해 확정",
+            "다중 라인 주문에서 데드락을 방지하기 위해 잠금은 sku_id 순서로 획득"
           ]
         },
         {
           "name": "Shipment",
-          "description": "A physical dispatch against a FulfillmentGroup. One group may split into several Shipments by DC and by partial availability.",
+          "description": "FulfillmentGroup에 대한 실물 발송입니다. 하나의 그룹은 DC별, 부분 가용성별로 여러 Shipment로 분할될 수 있습니다.",
           "fields": [
             { "name": "id", "type": "uuid" },
             { "name": "fulfillment_group_id", "type": "uuid", "note": "FK -> FulfillmentGroup" },
-            { "name": "carrier_id", "type": "uuid", "note": "FK -> Carrier; handed off via a per-carrier adapter" },
-            { "name": "status", "type": "enum", "note": "CREATED -> ALLOCATED -> PICKING -> PACKED -> DISPATCHED -> IN_TRANSIT -> DELIVERED; branches EXCEPTION, RETURNED" },
-            { "name": "tracking_no", "type": "text", "note": "carrier reference; TrackingEvents ingested via webhook" },
-            { "name": "proof_of_delivery_s3_key", "type": "text", "note": "photo/signature stored in S3 on DELIVERED" }
+            { "name": "carrier_id", "type": "uuid", "note": "FK -> Carrier. 운송사별 어댑터를 통해 인계됨" },
+            { "name": "status", "type": "enum", "note": "CREATED -> ALLOCATED -> PICKING -> PACKED -> DISPATCHED -> IN_TRANSIT -> DELIVERED. 분기: EXCEPTION, RETURNED" },
+            { "name": "tracking_no", "type": "text", "note": "운송사 참조 번호. TrackingEvent는 웹훅으로 수집됨" },
+            { "name": "proof_of_delivery_s3_key", "type": "text", "note": "DELIVERED 시 사진/서명을 S3에 저장" }
           ],
           "relations": [
-            "Many Shipments per FulfillmentGroup",
-            "1 Shipment has many ShipmentLines and TrackingEvents, at most one ProofOfDelivery"
+            "FulfillmentGroup당 다수의 Shipment",
+            "1 Shipment는 다수의 ShipmentLine과 TrackingEvent를 가지며, 최대 하나의 ProofOfDelivery를 가짐"
           ]
         },
         {
           "name": "SupplierApplication",
-          "description": "Drives the maker-checker onboarding workflow. Every state change is recorded append-only as an ApprovalDecision.",
+          "description": "메이커-체커(검토자 분리) 온보딩 워크플로를 구동합니다. 모든 상태 변경은 ApprovalDecision으로 추가 전용(append-only)으로 기록됩니다.",
           "fields": [
             { "name": "id", "type": "uuid" },
             { "name": "org_id", "type": "uuid", "note": "FK -> Organization(org_type='supplier')" },
-            { "name": "status", "type": "enum", "note": "APPLIED -> DOCS_SUBMITTED -> AUTOMATED_CHECKS -> RISK_REVIEW -> COMPLIANCE_APPROVAL -> CATALOG_ONBOARDING -> ACTIVATED; branches INFO_REQUESTED, REJECTED" },
-            { "name": "risk_reviewer_id", "type": "uuid", "note": "the 'maker'" },
-            { "name": "compliance_reviewer_id", "type": "uuid", "note": "the 'checker' — enforced distinct from risk_reviewer_id" }
+            { "name": "status", "type": "enum", "note": "APPLIED -> DOCS_SUBMITTED -> AUTOMATED_CHECKS -> RISK_REVIEW -> COMPLIANCE_APPROVAL -> CATALOG_ONBOARDING -> ACTIVATED. 분기: INFO_REQUESTED, REJECTED" },
+            { "name": "risk_reviewer_id", "type": "uuid", "note": "'메이커'" },
+            { "name": "compliance_reviewer_id", "type": "uuid", "note": "'체커'. risk_reviewer_id와 반드시 다르도록 강제됨" }
           ],
           "relations": [
-            "1 SupplierApplication has many ApprovalTasks and append-only ApprovalDecisions",
-            "On ACTIVATED, sets up the supplier's PriceList and initial Skus"
+            "1 SupplierApplication은 다수의 ApprovalTask와 추가 전용 ApprovalDecision을 가짐",
+            "ACTIVATED 시 공급사의 PriceList와 초기 Sku를 설정"
           ]
         },
         {
           "name": "Settlement",
-          "description": "Computed once per delivered FulfillmentGroup. Fees and rounding applied here; posts double-entry LedgerEntries and a Payout.",
+          "description": "배송 완료된 FulfillmentGroup당 한 번 계산됩니다. 수수료와 반올림이 여기서 적용되며, 복식부기 LedgerEntry와 Payout을 발생시킵니다.",
           "fields": [
             { "name": "id", "type": "uuid" },
-            { "name": "fulfillment_group_id", "type": "uuid", "note": "FK -> FulfillmentGroup; UNIQUE (one settlement per group)" },
+            { "name": "fulfillment_group_id", "type": "uuid", "note": "FK -> FulfillmentGroup. UNIQUE (그룹당 하나의 정산)" },
             { "name": "supplier_org_id", "type": "uuid", "note": "FK -> Organization" },
-            { "name": "gross_krw", "type": "bigint", "note": "sum of delivered OrderLine snapshots" },
-            { "name": "fee_krw", "type": "bigint", "note": "rounding applied ONLY here, per the single documented rule" },
-            { "name": "net_payout_krw", "type": "bigint", "note": "gross_krw - fee_krw; settled on KST business-day cutoffs" }
+            { "name": "gross_krw", "type": "bigint", "note": "배송 완료된 OrderLine 스냅샷의 합" },
+            { "name": "fee_krw", "type": "bigint", "note": "문서화된 단일 규칙에 따라 반올림은 오직 여기서만 적용" },
+            { "name": "net_payout_krw", "type": "bigint", "note": "gross_krw - fee_krw. KST 영업일 마감 기준으로 정산" }
           ],
           "relations": [
-            "Exactly one Settlement per FulfillmentGroup (UNIQUE)",
-            "1 Settlement produces many LedgerEntries and one Payout"
+            "FulfillmentGroup당 정확히 하나의 Settlement (UNIQUE)",
+            "1 Settlement는 다수의 LedgerEntry와 하나의 Payout을 생성"
           ]
         },
         {
           "name": "LedgerEntry",
-          "description": "Append-only, double-entry accounting line. Never updated or deleted — corrections are new reversing entries.",
+          "description": "추가 전용 복식부기 라인입니다. 갱신되거나 삭제되지 않습니다. 정정은 새로운 역분개 항목으로 처리됩니다.",
           "fields": [
             { "name": "id", "type": "uuid" },
             { "name": "fulfillment_group_id", "type": "uuid", "note": "FK -> FulfillmentGroup" },
-            { "name": "entry_type", "type": "enum", "note": "e.g. 'gross', 'fee', 'payout'" },
+            { "name": "entry_type", "type": "enum", "note": "예: 'gross', 'fee', 'payout'" },
             { "name": "direction", "type": "enum", "note": "'debit' | 'credit'" },
-            { "name": "amount_krw", "type": "bigint", "note": "integer KRW" },
-            { "name": "created_at", "type": "timestamptz", "note": "immutable; no UPDATE/DELETE" }
+            { "name": "amount_krw", "type": "bigint", "note": "정수 KRW" },
+            { "name": "created_at", "type": "timestamptz", "note": "불변. UPDATE/DELETE 없음" }
           ],
           "relations": [
-            "UNIQUE (fulfillment_group_id, entry_type) — guards against double settlement",
-            "Many LedgerEntries per Settlement"
+            "UNIQUE (fulfillment_group_id, entry_type) — 이중 정산을 방지",
+            "Settlement당 다수의 LedgerEntry"
           ]
         },
         {
           "name": "OutboxEvent",
-          "description": "Written in the same DB transaction as the state change it describes, then relayed to SQS/SNS. The backbone of all async work; idempotent consumers dedup on it.",
+          "description": "자신이 기술하는 상태 변경과 동일한 DB 트랜잭션 안에서 기록된 뒤 SQS/SNS로 중계됩니다. 모든 비동기 작업의 근간이며, 멱등 컨슈머가 이를 기준으로 중복을 제거합니다.",
           "fields": [
             { "name": "id", "type": "uuid" },
-            { "name": "event_type", "type": "text", "note": "e.g. 'OrderPlaced', 'ShipmentDelivered'" },
-            { "name": "aggregate_id", "type": "uuid", "note": "e.g. the FulfillmentGroup or Order id" },
+            { "name": "event_type", "type": "text", "note": "예: 'OrderPlaced', 'ShipmentDelivered'" },
+            { "name": "aggregate_id", "type": "uuid", "note": "예: FulfillmentGroup 또는 Order id" },
             { "name": "payload", "type": "jsonb" },
-            { "name": "published_at", "type": "timestamptz", "note": "null until the relay publishes to SQS" },
-            { "name": "dedup_key", "type": "text", "note": "drives idempotent consumers; e.g. (event_type, external_id)" }
+            { "name": "published_at", "type": "timestamptz", "note": "중계기가 SQS로 발행하기 전까지 null" },
+            { "name": "dedup_key", "type": "text", "note": "멱등 컨슈머를 구동. 예: (event_type, external_id)" }
           ],
           "relations": [
-            "Written atomically with the aggregate change (no dual writes)",
-            "Consumed by search-projection, settlement, and notifications workers"
+            "애그리거트 변경과 원자적으로 함께 기록됨(이중 쓰기 없음)",
+            "search-projection, settlement, notifications 워커가 소비"
           ]
         }
       ]
@@ -247,24 +247,24 @@
     {
       "kind": "callout",
       "tone": "insight",
-      "title": "Why FulfillmentGroup is the spine",
-      "body": "The buyer-level Order is a derived view; the FulfillmentGroup is the real aggregate. Suppliers accept/reject it, inventory reserves per its lines, Shipments and Settlements key off it, and RBAC scopes to it. Because a Sku always belongs to exactly one supplier Organization, the Cart-to-FulfillmentGroup split is a mechanical group-by on sku.supplier_org_id rather than a heuristic. Modeling this split on day one — instead of bolting per-supplier logic onto a flat Order later — is the decision I would make first again."
+      "title": "FulfillmentGroup이 척추인 이유",
+      "body": "구매자 수준의 Order는 파생된 뷰이고, FulfillmentGroup이 실제 애그리거트입니다. 공급사는 이를 수락/거부하고, 재고는 그 라인 단위로 예약되며, Shipment와 Settlement가 이를 키로 삼고, RBAC가 이를 기준으로 범위를 한정합니다. Sku가 항상 정확히 하나의 공급사 Organization에 속하기 때문에, Cart에서 FulfillmentGroup으로의 분할은 휴리스틱이 아니라 sku.supplier_org_id에 대한 기계적인 group-by가 됩니다. 나중에 평평한 Order에 공급사별 로직을 덧붙이는 대신 이 분할을 첫날부터 모델링한 것 — 다시 해도 가장 먼저 내릴 결정입니다."
     },
     {
       "kind": "bullets",
       "items": [
-        "An OrderLine belongs to exactly one FulfillmentGroup and never references the Order directly; the Order is just the buyer-level header.",
-        "An Order is SPLIT into exactly one FulfillmentGroup per distinct supplier (UNIQUE (order_id, supplier_org_id)); a Sku belongs to exactly one supplier, so the split is deterministic.",
-        "Order.status is DERIVED from its FulfillmentGroups' statuses — it is never the authoritative source of truth.",
-        "OrderLine.unit_price_krw is snapshotted at placement from the resolved ContractPrice/PriceList and is immutable; search is never authoritative for money — checkout always re-prices from Postgres.",
-        "All money is integer KRW stored as bigint; rounding is applied only at fee calculation in Settlement, per a single documented rule.",
-        "InventoryItem.available can never go negative (CHECK (available >= 0)); availability is authoritative at the database, reserved via Redis soft-hold then confirmed under SELECT ... FOR UPDATE.",
-        "Reservation locks are acquired in sku_id order to give consistent lock ordering and avoid deadlocks on multi-line orders.",
-        "Exactly one Settlement per FulfillmentGroup, and LedgerEntry is UNIQUE per (fulfillment_group_id, entry_type) — these constraints make double settlement impossible.",
-        "LedgerEntry and ApprovalDecision are append-only: no UPDATE or DELETE; corrections are new reversing/decision rows.",
-        "OutboxEvent is written in the same transaction as the change it describes (no dual writes); consumers are idempotent and dedup on its key.",
-        "Maker-checker is structurally enforced: a SupplierApplication's compliance_reviewer_id (checker) must differ from its risk_reviewer_id (maker).",
-        "Every tenant-scoped row carries org_id and is filtered by row-level scoping, so a buyer or supplier can only ever see its own data."
+        "OrderLine은 정확히 하나의 FulfillmentGroup에 속하며 Order를 직접 참조하지 않습니다. Order는 단지 구매자 수준의 헤더일 뿐입니다.",
+        "Order는 공급사별로 정확히 하나의 FulfillmentGroup으로 분할됩니다(UNIQUE (order_id, supplier_org_id)). Sku는 정확히 하나의 공급사에 속하므로 분할은 결정적입니다.",
+        "Order.status는 소속 FulfillmentGroup들의 상태에서 파생됩니다. 결코 권위 있는 진실의 원천이 아닙니다.",
+        "OrderLine.unit_price_krw는 주문 생성 시 해석된 ContractPrice/PriceList로부터 스냅샷되어 불변입니다. 검색은 금액에 대해 결코 권위를 갖지 않으며, 체크아웃은 항상 Postgres에서 다시 가격을 책정합니다.",
+        "모든 금액은 bigint로 저장되는 정수 KRW이며, 반올림은 문서화된 단일 규칙에 따라 오직 Settlement의 수수료 계산에서만 적용됩니다.",
+        "InventoryItem.available은 음수가 될 수 없습니다(CHECK (available >= 0)). 가용성은 데이터베이스에서 권위를 가지며, Redis 소프트 홀드로 예약한 뒤 SELECT ... FOR UPDATE 하에서 확정됩니다.",
+        "예약 잠금은 sku_id 순서로 획득하여 일관된 잠금 순서를 보장하고 다중 라인 주문에서 데드락을 방지합니다.",
+        "FulfillmentGroup당 정확히 하나의 Settlement가 있으며, LedgerEntry는 (fulfillment_group_id, entry_type)별로 UNIQUE입니다. 이 제약들이 이중 정산을 불가능하게 만듭니다.",
+        "LedgerEntry와 ApprovalDecision은 추가 전용입니다. UPDATE나 DELETE가 없으며, 정정은 새로운 역분개/결정 행으로 처리됩니다.",
+        "OutboxEvent는 자신이 기술하는 변경과 동일한 트랜잭션 안에서 기록됩니다(이중 쓰기 없음). 컨슈머는 멱등하며 그 키를 기준으로 중복을 제거합니다.",
+        "메이커-체커는 구조적으로 강제됩니다. SupplierApplication의 compliance_reviewer_id(체커)는 반드시 risk_reviewer_id(메이커)와 달라야 합니다.",
+        "테넌트 범위의 모든 행은 org_id를 지니며 행 수준 범위 지정으로 필터링되므로, 구매자나 공급사는 오직 자신의 데이터만 볼 수 있습니다."
       ]
     }
   ]

@@ -9,9 +9,9 @@ export function Approach() {
       <Reveal>
         <SectionHeading
           id="approach-heading"
-          eyebrow="How I work"
-          title="Engineering principles"
-          description="The defaults I bring to every team, codebase, and decision."
+          eyebrow="일하는 방식"
+          title="엔지니어링 원칙"
+          description="모든 팀과 코드베이스, 그리고 의사결정에 기본값으로 가져가는 원칙입니다."
         />
       </Reveal>
 

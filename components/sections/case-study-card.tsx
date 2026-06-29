@@ -59,14 +59,14 @@ export function CaseStudyCard({ project }: CaseStudyCardProps) {
 
       <CardContent>
         <p className="text-sm text-muted-foreground text-pretty">
-          <span className="font-medium text-foreground">Architecture. </span>
+          <span className="font-medium text-foreground">시스템 아키텍처. </span>
           {project.architecture}
         </p>
 
         <dl className="mt-6 grid gap-6 md:grid-cols-3">
-          <Block label="Problem">{project.problem}</Block>
+          <Block label="문제">{project.problem}</Block>
 
-          <Block label="Technical decisions">
+          <Block label="기술적 의사결정">
             <ul className="space-y-2">
               {project.decisions.map((decision) => (
                 <li key={decision.title}>
@@ -79,7 +79,7 @@ export function CaseStudyCard({ project }: CaseStudyCardProps) {
             </ul>
           </Block>
 
-          <Block label="Impact">
+          <Block label="성과">
             <ul className="space-y-2">
               {project.impact.map((item) => (
                 <li key={item} className="flex gap-2">
@@ -100,10 +100,10 @@ export function CaseStudyCard({ project }: CaseStudyCardProps) {
           <TechStack items={project.stack} />
           <Link
             href={href}
-            aria-label={`Read the full case study: ${project.title}`}
+            aria-label={`${project.title} 전체 케이스 스터디 보기`}
             className="inline-flex items-center gap-1 rounded-sm text-sm font-medium transition-colors hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
           >
-            Read the full case study
+            전체 케이스 스터디 보기
             <ArrowRight className="size-4" aria-hidden="true" />
           </Link>
         </div>

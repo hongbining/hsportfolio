@@ -36,10 +36,10 @@ const tocItems = [
 ]
 
 const factSheet = [
-  { label: "Role", value: meta.role },
-  { label: "Timeline", value: meta.timeline },
-  { label: "Team", value: meta.team },
-  { label: "Domain", value: meta.domain },
+  { label: "담당 역할", value: meta.role },
+  { label: "기간", value: meta.timeline },
+  { label: "팀 규모", value: meta.team },
+  { label: "도메인", value: meta.domain },
 ]
 
 function ArticleJsonLd() {
@@ -71,11 +71,11 @@ export default function CaseStudyPage() {
           className="inline-flex items-center gap-1 rounded-sm text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
         >
           <ArrowLeft className="size-4" aria-hidden="true" />
-          Back to work
+          작업 목록으로
         </Link>
 
         <header id="overview" className="mt-8 scroll-mt-20">
-          <Overline>Engineering case study</Overline>
+          <Overline>엔지니어링 케이스 스터디</Overline>
           <h1 className="mt-3 font-heading text-3xl font-semibold tracking-tight text-balance sm:text-4xl lg:text-5xl">
             {meta.title}
           </h1>
@@ -132,7 +132,7 @@ export default function CaseStudyPage() {
                 tabIndex={-1}
                 className="scroll-mt-20 border-t border-border/60 py-10 outline-none first:border-t-0 first:pt-0"
               >
-                <Overline>{`Section ${String(index + 1).padStart(2, "0")}`}</Overline>
+                <Overline>{`섹션 ${String(index + 1).padStart(2, "0")}`}</Overline>
                 <h2
                   id={`${section.id}-heading`}
                   className="mt-2 font-heading text-2xl font-semibold tracking-tight text-balance"
@@ -154,11 +154,11 @@ export default function CaseStudyPage() {
               <Button asChild size="xl">
                 <a href={`mailto:${siteConfig.email}`}>
                   <Mail className="size-4" aria-hidden="true" />
-                  Discuss this work
+                  이 프로젝트 문의하기
                 </a>
               </Button>
               <Button asChild variant="outline" size="xl">
-                <Link href="/#work">See more work</Link>
+                <Link href="/#work">다른 프로젝트 보기</Link>
               </Button>
             </div>
           </div>

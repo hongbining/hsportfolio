@@ -43,7 +43,7 @@ export const metadata: Metadata = {
   alternates: { canonical: "/" },
   openGraph: {
     type: "website",
-    locale: "en_US",
+    locale: "ko_KR",
     url: siteConfig.url,
     siteName: siteConfig.name,
     title,
@@ -81,7 +81,7 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="en"
+      lang="ko"
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
@@ -92,7 +92,7 @@ export default function RootLayout({
             href="#main"
             className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:rounded-md focus:bg-background focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:ring-2 focus:ring-ring"
           >
-            Skip to content
+            본문 바로가기
           </a>
           <SiteHeader />
           <main id="main" className="flex-1">

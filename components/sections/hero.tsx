@@ -49,18 +49,18 @@ export function Hero() {
             <div className="flex flex-wrap items-center gap-3">
               <Button asChild size="xl">
                 <a href="#work">
-                  View selected work
+                  프로젝트 보기
                   <ArrowRight className="size-4" aria-hidden="true" />
                 </a>
               </Button>
               <Button asChild variant="outline" size="xl">
-                <a href="#contact">Get in touch</a>
+                <a href="#contact">연락하기</a>
               </Button>
             </div>
           </Reveal>
 
           <Reveal delay={0.2} className="w-full">
-            <TechStack label="Core stack" className="pt-4" />
+            <TechStack label="주요 기술 스택" className="pt-4" />
           </Reveal>
         </div>
       </Container>

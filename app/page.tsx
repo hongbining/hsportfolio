@@ -11,8 +11,8 @@ export default function HomePage() {
     <>
       <ProfileJsonLd />
       <Hero />
-      <Capabilities />
       <CaseStudies />
+      <Capabilities />
       <Approach />
       <About />
       <ContactCta />

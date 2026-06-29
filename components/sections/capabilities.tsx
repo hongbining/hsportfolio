@@ -18,9 +18,9 @@ export function Capabilities() {
       <Reveal>
         <SectionHeading
           id="capabilities-heading"
-          eyebrow="하는 일"
-          title="시스템 관점으로, 스택 전반을 깊이 있게"
-          description="기능만이 아니라 — 규모가 커져도 안정적으로 돌아가게 하는 아키텍처·데이터·운영까지 책임집니다."
+          eyebrow="역량"
+          title="어떤 문제를 해결해왔는가"
+          description="기술이 아니라, 어떤 비즈니스 문제를 어떤 판단으로 풀었는지로 설명합니다."
         />
       </Reveal>
 

@@ -63,35 +63,52 @@ export interface TroubleshootingItem {
   resolution: string
 }
 
+export interface CoreFeature {
+  title: string
+  detail: string
+}
+
 /**
  * A case study. Deliberately models engineering substance — the business
  * problem, the architecture, the decisions and their rationale, and the
  * measurable impact — rather than just a screenshot and a title.
  */
 export interface Project {
-  /** URL-safe identifier for a future `/work/[slug]` route. */
+  /** URL-safe identifier for the `/work/[slug]` route. */
   slug: string
   title: string
-  /** e.g. "B2B SaaS · Payments". */
+  /** e.g. "B2B 커머스 · 폐쇄몰". */
   domain: string
+  /** Sort order on the home grid (ascending). */
+  order: number
   year: number
+  /** Human-readable period, e.g. "2026.04 ~ 현재". */
+  period: string
   role: string
+  /** The single capability this project is meant to prove. */
+  capability: string
+  /** The interview question this case study should provoke. */
+  interviewQuestion: string
   /** One-line summary used in cards and metadata. */
   summary: string
-  /** The business problem that justified the work. */
+  /** 문제 — the business problem that justified the work. */
   problem: string
-  /** A short architecture overview. */
-  architecture: string
-  /** Key technical decisions and why they were made. */
+  /** 제약조건 — constraints that shaped every decision. */
+  constraints: string[]
+  /** 판단 — key technical decisions and why they were made. */
   decisions: TechnicalDecision[]
-  /** Choices made and the costs accepted in exchange. */
+  /** 설계 — a short architecture overview. */
+  architecture: string
+  /** 구현 — core features built. */
+  coreFeatures: CoreFeature[]
+  /** 트레이드오프 — choices and the costs accepted in exchange. */
   tradeoffs: TradeOff[]
-  /** Real production issues and how they were resolved. */
+  /** 트러블슈팅 — real production issues and how they were resolved. */
   troubleshooting: TroubleshootingItem[]
-  /** What you'd carry into the next system. */
-  lessonsLearned: string[]
-  /** Measurable outcomes. */
+  /** 결과 — outcomes (verifiable artefacts or [실제 수치 입력]). */
   impact: string[]
+  /** 회고 — what you'd carry into the next system. */
+  lessonsLearned: string[]
   stack: string[]
   links: ProjectLink[]
   featured: boolean

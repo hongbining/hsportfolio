@@ -49,12 +49,12 @@ export function Hero() {
             <div className="flex flex-wrap items-center gap-3">
               <Button asChild size="xl">
                 <a href="#work">
-                  프로젝트 보기
+                  대표 프로젝트 보기
                   <ArrowRight className="size-4" aria-hidden="true" />
                 </a>
               </Button>
               <Button asChild variant="outline" size="xl">
-                <a href="#contact">연락하기</a>
+                <a href="#about">이력 살펴보기</a>
               </Button>
             </div>
           </Reveal>

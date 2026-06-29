@@ -23,7 +23,7 @@ function Experience() {
                 {item.period}
               </p>
             </div>
-            <p className="text-sm text-muted-foreground text-pretty">
+            <p className="text-sm leading-relaxed text-foreground/70 text-pretty">
               {item.description}
             </p>
           </li>
@@ -54,7 +54,7 @@ export function About() {
         <div className="lg:col-span-7">
           <div className="flex flex-col gap-10">
             <Reveal>
-              <div className="space-y-4 text-base text-muted-foreground text-pretty">
+              <div className="space-y-4 text-base leading-relaxed text-foreground/80 text-pretty">
                 {siteConfig.about.map((paragraph) => (
                   <p key={paragraph.slice(0, 24)}>{paragraph}</p>
                 ))}

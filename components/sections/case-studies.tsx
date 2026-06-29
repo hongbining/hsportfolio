@@ -2,11 +2,10 @@ import { Section } from "@/components/section"
 import { SectionHeading } from "@/components/section-heading"
 import { Reveal } from "@/components/motion/reveal"
 import { CaseStudyCard } from "@/components/sections/case-study-card"
-import { FeaturedCaseStudy } from "@/components/sections/featured-case-study"
-import { getFeaturedProjects } from "@/lib/projects"
+import { getAllProjects } from "@/lib/projects"
 
 export function CaseStudies() {
-  const projects = getFeaturedProjects()
+  const projects = getAllProjects()
 
   return (
     <Section
@@ -17,17 +16,13 @@ export function CaseStudies() {
       <Reveal>
         <SectionHeading
           id="work-heading"
-          eyebrow="주요 프로젝트"
-          title="스크린샷이 아니라, 엔지니어링 케이스 스터디"
-          description="비즈니스 문제, 시스템 아키텍처, 그리고 그 뒤의 의사결정 — 그래서 무엇이 달라졌는지까지 담았습니다."
+          eyebrow="대표 프로젝트"
+          title="4개 프로젝트, 4가지 역량"
+          description="비즈니스 설계, 기술 난이도, 운영 서비스, Enterprise CMS — 서로 다른 강점을 각각 증명합니다."
         />
       </Reveal>
 
-      <Reveal delay={0.05} className="mt-12">
-        <FeaturedCaseStudy />
-      </Reveal>
-
-      <ul className="mt-6 flex flex-col gap-6">
+      <ul className="mt-12 flex flex-col gap-5">
         {projects.map((project, index) => (
           <li key={project.slug}>
             <Reveal delay={index === 0 ? 0 : 0.05}>

@@ -127,6 +127,11 @@
   html {
     @apply font-sans;
   }
+  /* 한국어 가독성: 단어 단위 줄바꿈(keep-all) + 긴 토큰은 줄바꿈 허용 */
+  body {
+    word-break: keep-all;
+    overflow-wrap: break-word;
+  }
 }
 
 /* Honor users who request reduced motion across CSS animations and transitions. */

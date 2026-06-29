@@ -7,6 +7,7 @@ import { ArrowLeft, Check, Mail } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Container } from "@/components/container"
+import { Overline } from "@/components/overline"
 import { TechStack } from "@/components/sections/tech-stack"
 import { getProjectBySlug, getProjectSlugs } from "@/lib/projects"
 import { siteConfig } from "@/lib/site-config"
@@ -50,11 +51,13 @@ function CaseSection({
   children: React.ReactNode
 }) {
   return (
-    <section className="grid gap-4 border-t border-border py-8 first:border-t-0 first:pt-0 lg:grid-cols-[200px_1fr] lg:gap-10 lg:py-10">
-      <h2 className="font-heading text-sm font-semibold tracking-tight">
+    <section className="grid gap-3 border-t border-border py-8 first:border-t-0 first:pt-0 lg:grid-cols-[160px_1fr] lg:gap-10 lg:py-10">
+      <h2 className="font-heading text-sm font-semibold tracking-tight text-foreground">
         {title}
       </h2>
-      <div className="max-w-2xl text-muted-foreground">{children}</div>
+      <div className="max-w-2xl text-[15px] leading-7 text-foreground/80">
+        {children}
+      </div>
     </section>
   )
 }
@@ -65,7 +68,9 @@ function TermList({ items }: { items: { term: string; detail: string }[] }) {
       {items.map((item) => (
         <li key={item.term}>
           <p className="font-medium text-foreground text-pretty">{item.term}</p>
-          <p className="mt-1 text-sm text-pretty">{item.detail}</p>
+          <p className="mt-1 leading-7 text-foreground/75 text-pretty">
+            {item.detail}
+          </p>
         </li>
       ))}
     </ul>
@@ -93,10 +98,11 @@ export default async function CaseStudyPage({
         </Link>
 
         <header className="mt-8 max-w-3xl">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-muted-foreground">
+          <Overline>{project.capability}</Overline>
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-muted-foreground">
             <span>{project.domain}</span>
             <span aria-hidden="true">·</span>
-            <span>{project.year}</span>
+            <span>{project.period}</span>
             <Badge variant="outline" className="font-normal">
               {project.role}
             </Badge>
@@ -104,7 +110,7 @@ export default async function CaseStudyPage({
           <h1 className="mt-4 font-heading text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
             {project.title}
           </h1>
-          <p className="mt-4 text-lg text-muted-foreground text-pretty">
+          <p className="mt-4 text-lg leading-relaxed text-foreground/80 text-pretty">
             {project.summary}
           </p>
           <div className="mt-6">
@@ -113,19 +119,42 @@ export default async function CaseStudyPage({
         </header>
 
         <div className="mt-10">
-          <CaseSection title="해결하려는 문제">
-            <p className="text-base text-pretty">{project.problem}</p>
+          <CaseSection title="문제">
+            <p className="text-pretty">{project.problem}</p>
           </CaseSection>
 
-          <CaseSection title="시스템 아키텍처">
-            <p className="text-base text-pretty">{project.architecture}</p>
+          <CaseSection title="제약조건">
+            <ul className="space-y-2">
+              {project.constraints.map((item) => (
+                <li key={item} className="flex gap-2 text-pretty">
+                  <span
+                    aria-hidden="true"
+                    className="mt-2.5 size-1 shrink-0 rounded-full bg-muted-foreground/60"
+                  />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
           </CaseSection>
 
-          <CaseSection title="기술적 의사결정">
+          <CaseSection title="판단">
             <TermList
               items={project.decisions.map((d) => ({
                 term: d.title,
                 detail: d.rationale,
+              }))}
+            />
+          </CaseSection>
+
+          <CaseSection title="설계">
+            <p className="text-pretty">{project.architecture}</p>
+          </CaseSection>
+
+          <CaseSection title="구현">
+            <TermList
+              items={project.coreFeatures.map((f) => ({
+                term: f.title,
+                detail: f.detail,
               }))}
             />
           </CaseSection>
@@ -148,12 +177,12 @@ export default async function CaseStudyPage({
             />
           </CaseSection>
 
-          <CaseSection title="성과">
+          <CaseSection title="결과">
             <ul className="space-y-3">
               {project.impact.map((item) => (
                 <li key={item} className="flex gap-2 text-pretty">
                   <Check
-                    className="mt-0.5 size-4 shrink-0 text-foreground"
+                    className="mt-1 size-4 shrink-0 text-foreground"
                     aria-hidden="true"
                   />
                   <span>{item}</span>
@@ -162,7 +191,7 @@ export default async function CaseStudyPage({
             </ul>
           </CaseSection>
 
-          <CaseSection title="배운 점">
+          <CaseSection title="회고">
             <ul className="space-y-3">
               {project.lessonsLearned.map((lesson) => (
                 <li key={lesson} className="flex gap-2 text-pretty">
@@ -180,7 +209,7 @@ export default async function CaseStudyPage({
           <Button asChild size="xl">
             <a href={`mailto:${siteConfig.email}`}>
               <Mail className="size-4" aria-hidden="true" />
-              프로젝트 문의하기
+              이 프로젝트 문의하기
             </a>
           </Button>
           <Button asChild variant="outline" size="xl">

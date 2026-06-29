@@ -1,0 +1,90 @@
+{
+  "id": "database-design",
+  "title": "Database Design",
+  "summary": "How a single PostgreSQL 15 database, organized schema-per-context with row-level org_id scoping, became the authoritative store for ordering, inventory, fulfillment, and settlement — and how a handful of carefully chosen constraints, not application code, are what actually enforce correctness under concurrency.",
+  "blocks": [
+    {
+      "kind": "lead",
+      "text": "One PostgreSQL 15 database is the spine of KH Wholesale; every invariant that matters for money or stock is enforced at the database with constraints, not hoped for in application code."
+    },
+    {
+      "kind": "prose",
+      "paragraphs": [
+        "I made an early and deliberate decision: KH runs on a single PostgreSQL 15 database, not a database-per-service sprawl. With a modular monolith and a 6-person team, one database bought me transactional integrity across bounded contexts — I can place an Order, write the per-supplier FulfillmentGroups, snapshot prices onto OrderLines, and append the OutboxEvent in one transaction that either fully commits or fully rolls back. That single property eliminated an entire class of distributed-consistency bugs we would otherwise have spent the next year chasing.",
+        "Inside that one database I used schema-per-context to keep the bounded contexts from bleeding into each other. Each module — identity, catalog, pricing, ordering, inventory, fulfillment, supplier, settlement, notifications — owns a Postgres schema. Cross-context reads go through well-defined module APIs, not ad-hoc joins across schemas, so the schema boundary doubles as an architectural fence. It is the same discipline a service boundary would give us, minus the network calls and the dual-write problem.",
+        "Tenant isolation is row-level on org_id. Every buyer or supplier is an Organization, and nearly every business table carries an org_id column. RBAC decides what a User can do; org_id scoping decides which rows they can even see. Application-layer query helpers inject the org_id predicate, and the columns are indexed so that scoping is also a performance lever, not just a security one.",
+        "The three design rules I refused to compromise on: money is always integer KRW stored as bigint, prices are snapshotted immutably at the moment they matter, and any invariant that protects money or stock is expressed as a database constraint. Everything below follows from those rules."
+      ]
+    },
+    {
+      "kind": "definitions",
+      "definitions": [
+        {
+          "term": "Money as bigint KRW",
+          "description": "The Korean won has no minor units, so every amount is an integer number of won stored as bigint. No floats, no decimals, no currency-conversion ambiguity. All money math is integer; the only rounding in the system happens at fee calculation, governed by one documented rounding rule, so statements reconcile to the won."
+        },
+        {
+          "term": "Immutable price snapshots",
+          "description": "When an Order is placed, the effective price (ContractPrice or PriceList) is copied onto each OrderLine as unit_price_krw and frozen. Later price-list edits never mutate historical orders. The OrderLine is the legal record of what was agreed, which is why it is treated as append-once and never updated in place for price fields."
+        },
+        {
+          "term": "Schema-per-context",
+          "description": "One Postgres database, but each bounded context owns its own schema (ordering, inventory, fulfillment, settlement, ...). The schema namespace enforces module boundaries; cross-schema access is through module APIs rather than raw cross-schema joins."
+        },
+        {
+          "term": "org_id row-level scoping",
+          "description": "Multi-tenant isolation is enforced per row via an org_id column referencing identity.organizations. Combined with RBAC, it guarantees a buyer org can never read or mutate another org's rows."
+        },
+        {
+          "term": "Transactional outbox",
+          "description": "Instead of writing to Postgres and then publishing to SNS/SQS (a dual write that can half-fail), I write an OutboxEvent row in the same transaction as the state change. A relay polls the outbox and publishes to SNS, marking rows dispatched. The database commit is the single source of truth for 'did this event happen'."
+        }
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "sql",
+      "caption": "Core DDL for the ordering, inventory, and outbox tables. Money is bigint KRW; correctness invariants are CHECK and UNIQUE constraints, not application logic.",
+      "code": "-- Schemas mirror the bounded contexts.\nCREATE SCHEMA IF NOT EXISTS ordering;\nCREATE SCHEMA IF NOT EXISTS inventory;\nCREATE SCHEMA IF NOT EXISTS messaging;\n\n-- Explicit, table-driven enums for the state machines.\nCREATE TYPE ordering.order_status AS ENUM (\n  'DRAFT', 'PLACED', 'PARTIALLY_FULFILLED', 'PARTIALLY_CANCELLED',\n  'COMPLETED', 'CANCELLED'\n);\nCREATE TYPE ordering.fulfillment_group_status AS ENUM (\n  'AWAITING_SUPPLIER', 'ACCEPTED', 'FULFILLING', 'SHIPPED',\n  'DELIVERED', 'SETTLED', 'REJECTED', 'CANCELLED', 'PARTIALLY_SHIPPED'\n);\n\n-- ORDER: buyer-level. Status is DERIVED from its FulfillmentGroups,\n-- but persisted for fast reads. org_id scopes to the buyer org.\nCREATE TABLE ordering.orders (\n  id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,\n  org_id          bigint NOT NULL REFERENCES identity.organizations (id),\n  buyer_user_id   bigint NOT NULL REFERENCES identity.users (id),\n  status          ordering.order_status NOT NULL DEFAULT 'DRAFT',\n  currency        char(3) NOT NULL DEFAULT 'KRW' CHECK (currency = 'KRW'),\n  subtotal_krw    bigint NOT NULL DEFAULT 0 CHECK (subtotal_krw >= 0),\n  tax_krw         bigint NOT NULL DEFAULT 0 CHECK (tax_krw >= 0),\n  total_krw       bigint NOT NULL DEFAULT 0 CHECK (total_krw >= 0),\n  placed_at       timestamptz,\n  created_at      timestamptz NOT NULL DEFAULT now(),\n  updated_at      timestamptz NOT NULL DEFAULT now()\n);\n\n-- FULFILLMENT GROUP: the per-supplier sub-order. The unit suppliers act on,\n-- and the spine of ordering -> fulfillment -> settlement.\nCREATE TABLE ordering.fulfillment_groups (\n  id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,\n  order_id        bigint NOT NULL REFERENCES ordering.orders (id),\n  org_id          bigint NOT NULL REFERENCES identity.organizations (id), -- buyer org\n  supplier_org_id bigint NOT NULL REFERENCES identity.organizations (id),\n  status          ordering.fulfillment_group_status NOT NULL\n                    DEFAULT 'AWAITING_SUPPLIER',\n  subtotal_krw    bigint NOT NULL DEFAULT 0 CHECK (subtotal_krw >= 0),\n  accepted_at     timestamptz,\n  created_at      timestamptz NOT NULL DEFAULT now(),\n  updated_at      timestamptz NOT NULL DEFAULT now(),\n  -- One supplier appears at most once per order: the split is deterministic.\n  CONSTRAINT uq_group_per_supplier UNIQUE (order_id, supplier_org_id)\n);\n\n-- ORDER LINE: belongs to a FulfillmentGroup. Price is SNAPSHOTTED here\n-- at placement and never mutated. amount_krw is derived but stored\n-- and constrained so it can never drift from qty * unit_price.\nCREATE TABLE ordering.order_lines (\n  id                   bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,\n  fulfillment_group_id bigint NOT NULL\n                         REFERENCES ordering.fulfillment_groups (id),\n  sku_id               bigint NOT NULL REFERENCES catalog.skus (id),\n  qty                  integer NOT NULL CHECK (qty > 0),\n  -- Immutable snapshot of the agreed price at placement time.\n  unit_price_krw       bigint NOT NULL CHECK (unit_price_krw >= 0),\n  price_source         text NOT NULL CHECK (\n                         price_source IN ('CONTRACT', 'PRICE_LIST', 'PROMOTION')),\n  amount_krw           bigint NOT NULL\n                         GENERATED ALWAYS AS (qty * unit_price_krw) STORED,\n  created_at           timestamptz NOT NULL DEFAULT now(),\n  -- A SKU cannot appear twice within one group: merge at cart time.\n  CONSTRAINT uq_line_per_sku UNIQUE (fulfillment_group_id, sku_id)\n);\n\n-- INVENTORY ITEM: stock per Sku per location. The database is authoritative.\n-- available can never go negative; the CHECK is the last line of defense\n-- against oversell.\nCREATE TABLE inventory.inventory_items (\n  id           bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,\n  sku_id       bigint NOT NULL REFERENCES catalog.skus (id),\n  location_id  bigint NOT NULL REFERENCES fulfillment.locations (id),\n  on_hand      integer NOT NULL DEFAULT 0 CHECK (on_hand >= 0),\n  reserved     integer NOT NULL DEFAULT 0 CHECK (reserved >= 0),\n  available    integer NOT NULL DEFAULT 0 CHECK (available >= 0),\n  -- Optimistic concurrency: bumped on every confirm/decrement.\n  version      bigint  NOT NULL DEFAULT 0,\n  updated_at   timestamptz NOT NULL DEFAULT now(),\n  CONSTRAINT uq_inventory_sku_location UNIQUE (sku_id, location_id),\n  -- The accounting identity must always hold.\n  CONSTRAINT ck_inventory_balance CHECK (available = on_hand - reserved)\n);\n\n-- STOCK RESERVATION: the confirmed (hard) hold. The Redis soft-hold has a TTL;\n-- on supplier ACCEPT we confirm it into this row under a row lock.\nCREATE TYPE inventory.reservation_status AS ENUM ('CONFIRMED', 'RELEASED', 'CONSUMED');\nCREATE TABLE inventory.stock_reservations (\n  id                   bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,\n  inventory_item_id    bigint NOT NULL REFERENCES inventory.inventory_items (id),\n  fulfillment_group_id bigint NOT NULL\n                         REFERENCES ordering.fulfillment_groups (id),\n  order_line_id        bigint NOT NULL REFERENCES ordering.order_lines (id),\n  qty                  integer NOT NULL CHECK (qty > 0),\n  status               inventory.reservation_status NOT NULL DEFAULT 'CONFIRMED',\n  expires_at           timestamptz,  -- swept if a confirm never completes\n  created_at           timestamptz NOT NULL DEFAULT now(),\n  -- At most ONE active reservation per line: the anti-oversell / anti-double-\n  -- reserve guard. Partial index so released/consumed rows don't collide.\n  CONSTRAINT uq_active_reservation_per_line\n    EXCLUDE (order_line_id WITH =) WHERE (status = 'CONFIRMED')\n);\n\n-- OUTBOX: written in the SAME transaction as the state change it describes.\n-- A relay polls undispatched rows and publishes to SNS, then marks them.\nCREATE TABLE messaging.outbox_events (\n  id             bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,\n  aggregate_type text   NOT NULL,          -- e.g. 'Order', 'Shipment'\n  aggregate_id   bigint NOT NULL,\n  event_type     text   NOT NULL,          -- e.g. 'OrderPlaced'\n  -- Idempotency anchor for consumers: (event_type, external_id) is unique.\n  external_id    text   NOT NULL,\n  payload        jsonb  NOT NULL,\n  occurred_at    timestamptz NOT NULL DEFAULT now(),\n  dispatched_at  timestamptz,             -- NULL until the relay publishes\n  CONSTRAINT uq_outbox_event_identity UNIQUE (event_type, external_id)\n);\n-- Hot path for the relay: only ever scans the small undispatched set.\nCREATE INDEX ix_outbox_undispatched\n  ON messaging.outbox_events (occurred_at)\n  WHERE dispatched_at IS NULL;"
+    },
+    {
+      "kind": "prose",
+      "paragraphs": [
+        "A few of these choices are load-bearing and worth calling out. amount_krw on order_lines is a STORED generated column — the database computes qty * unit_price_krw so the line total can never drift from its inputs, even if buggy application code tries to set it directly. unit_price_krw is a frozen snapshot; nothing in the system updates it after placement, which is what makes an OrderLine a trustworthy legal record.",
+        "On inventory, three constraints work together. CHECK (available >= 0) is the hard floor that makes oversell impossible at the storage layer. CHECK (available = on_hand - reserved) keeps the three counters internally consistent so no code path can quietly desynchronize them. And the EXCLUDE constraint with a WHERE (status = 'CONFIRMED') predicate guarantees at most one active reservation per order line — a check-then-write race can no longer create a second hold. During the confirm transaction the application also takes SELECT ... FOR UPDATE on the inventory_items row and acquires locks in sku_id order to avoid the deadlocks we hit early on.",
+        "On the outbox, uq_outbox_event_identity (event_type, external_id) gives every consumer a stable idempotency key, and the partial index ix_outbox_undispatched keeps the relay's poll cheap regardless of how many millions of dispatched rows have accumulated. The settlement ledger applies the same idea downstream with a UNIQUE on LedgerEntry per (group, type), which is what stopped the double-settlement incident when a carrier webhook retried ShipmentDelivered."
+      ]
+    },
+    {
+      "kind": "table",
+      "caption": "Key indexes and the access pattern each one serves.",
+      "columns": ["Schema.Table", "Index", "Definition", "Purpose"],
+      "rows": [
+        ["ordering.orders", "ix_orders_org_status", "(org_id, status, placed_at DESC)", "Buyer order-history and ops dashboards, already org-scoped; supports the storefront p95 < 300ms target."],
+        ["ordering.fulfillment_groups", "ix_groups_supplier_status", "(supplier_org_id, status, created_at)", "Supplier portal worklist: 'show me everything AWAITING_SUPPLIER for my org' without a full scan."],
+        ["ordering.fulfillment_groups", "uq_group_per_supplier", "UNIQUE (order_id, supplier_org_id)", "Enforces the deterministic per-supplier split; one group per supplier per order."],
+        ["ordering.order_lines", "uq_line_per_sku", "UNIQUE (fulfillment_group_id, sku_id)", "Forces cart-time merge; prevents duplicate SKU lines that would break settlement math."],
+        ["inventory.inventory_items", "uq_inventory_sku_location", "UNIQUE (sku_id, location_id)", "One stock row per SKU per DC; the row that confirm locks with SELECT ... FOR UPDATE."],
+        ["inventory.stock_reservations", "uq_active_reservation_per_line", "EXCLUDE (order_line_id) WHERE status='CONFIRMED'", "Anti-oversell guard: at most one active hold per line."],
+        ["inventory.stock_reservations", "ix_reservations_expiry", "(expires_at) WHERE status='CONFIRMED'", "Drives the expiry sweeper that releases abandoned holds."],
+        ["messaging.outbox_events", "uq_outbox_event_identity", "UNIQUE (event_type, external_id)", "Consumer idempotency key; dedups SNS/SQS redeliveries."],
+        ["messaging.outbox_events", "ix_outbox_undispatched", "(occurred_at) WHERE dispatched_at IS NULL", "Cheap relay polling over the small undispatched set only."]
+      ]
+    },
+    {
+      "kind": "callout",
+      "tone": "insight",
+      "title": "The constraints are the correctness layer",
+      "body": "The invariants that actually keep KH solvent live in the schema, not in TypeScript. CHECK (available >= 0) makes overselling a SKU physically impossible at commit. CHECK (available = on_hand - reserved) stops the stock counters from drifting apart. EXCLUDE (order_line_id) WHERE status='CONFIRMED' permits at most one active hold per line, neutralizing the check-then-write race that caused ~12 oversell incidents/month before — now zero. The generated amount_krw column means a line total can never disagree with qty x unit_price_krw. uq_outbox_event_identity and the ledger's UNIQUE per (group, type) make event handlers idempotent by construction, which is how double settlement went away. Application code can have bugs; these rows still cannot enter an incorrect state. That is the whole bet: push every money- or stock-protecting invariant down to where the database can reject the bad write, and treat the service layer as orchestration on top of a store that refuses to lie."
+    },
+    {
+      "kind": "stats",
+      "metrics": [
+        {"label": "Oversell incidents", "value": "0 / month", "delta": "from ~12 / month", "note": "available >= 0 CHECK + single-active-reservation EXCLUDE + FOR UPDATE confirm."},
+        {"label": "Order-placement error rate", "value": "0.1%", "delta": "from 2.3%", "note": "One-transaction place: orders + groups + lines + outbox commit atomically."},
+        {"label": "Checkout p95", "value": "240 ms", "delta": "from 820 ms", "note": "org-scoped indexes and re-pricing from Postgres rather than search."},
+        {"label": "Settlement disputes", "value": "down ~70%", "note": "integer KRW math, immutable OrderLine snapshots, append-only ledger."}
+      ]
+    }
+  ]
+}

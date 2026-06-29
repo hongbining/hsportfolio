@@ -1,0 +1,104 @@
+{
+  "id": "requirements",
+  "title": "Requirements",
+  "summary": "The functional and non-functional requirements that defined KH Wholesale: a managed B2B marketplace where one buyer cart spans many suppliers, money and inventory must be exactly correct, search can lag, and every privileged action is auditable.",
+  "blocks": [
+    {
+      "kind": "lead",
+      "text": "Before we wrote a line of NestJS, we pinned down what the platform had to do, how correct and how fast it had to be, and which invariants we were never allowed to break."
+    },
+    {
+      "kind": "prose",
+      "paragraphs": [
+        "KH Wholesale is a managed marketplace for food and grocery (FMCG): independent retail buyers (restaurants, cafes, convenience stores, small grocers) order from suppliers (manufacturers, distributors, farms), and KH owns everything between the catalog and the supplier payout. The defining requirement, the one that shaped every module, was that a buyer composes a single Cart that can span multiple suppliers, and KH orchestrates the split, the fulfillment, the credit, the delivery, and the settlement behind it. A buyer never thinks in terms of suppliers; the platform does.",
+        "That single sentence forced a clean separation between the buyer-level Order and the per-supplier unit of work. We named that unit the FulfillmentGroup, and it became the spine of ordering, fulfillment, and settlement. Requirements had to be written against both levels: the Order is what the buyer sees and what derives an overall status; the FulfillmentGroup is what a supplier actually accepts, ships, and gets paid for.",
+        "We also separated requirements by their correctness class early, because not everything in a wholesale platform deserves the same guarantees. Money and inventory are non-negotiable and must be transactionally correct and authoritative in PostgreSQL. Catalog search is a read model that is allowed to lag, because the cost of a stale price in search is bounded: checkout always re-prices from the source of truth. Conflating those two classes is how platforms either oversell stock or grind to a halt under lock contention, and the requirements made the distinction explicit so the architecture could honor it."
+      ]
+    },
+    {
+      "kind": "table",
+      "caption": "Functional requirements by bounded context",
+      "columns": ["Capability", "Context", "Description"],
+      "rows": [
+        ["Multi-org identity & access", "Identity & Access", "Model an Organization as either a buyer or a supplier (org_type), with Users joined to orgs via Membership and a Role; every privileged action is RBAC-gated and scoped by org_id."],
+        ["Catalog browse & search", "Catalog", "Maintain Products, Skus (each Sku belongs to one supplier), and Categories; serve fast faceted search from an OpenSearch read model projected from the write store."],
+        ["Buyer-specific pricing", "Pricing", "Resolve the price a given buyer pays from PriceLists, buyer-negotiated ContractPrices, and active promotions; this resolved price is what gets snapshotted at placement."],
+        ["Multi-supplier cart & order placement", "Ordering", "Let a buyer build one Cart of CartItems across suppliers, then on place split the Order into one FulfillmentGroup per supplier with OrderLines, snapshotting price, checking credit, and soft-holding inventory."],
+        ["Inventory reservation & allocation", "Inventory", "Track InventoryItem stock per Sku per location; reserve stock as a two-phase soft-hold then a confirmed StockReservation, and decrement available atomically at allocation."],
+        ["Shipment, tracking & proof-of-delivery", "Fulfillment", "Create one or more Shipments per accepted group (splittable by DC and partial availability), hand off to a Carrier via a per-carrier adapter, ingest TrackingEvents via webhook, and capture ProofOfDelivery in S3 on delivery."],
+        ["Supplier onboarding & approval", "Supplier", "Drive a SupplierApplication through automated checks and a maker-checker review to ACTIVATED, with every ApprovalDecision recorded append-only."],
+        ["Settlement & payout", "Settlement", "Once a group is delivered, compute fees and produce Settlements, Payouts, and statements backed by an append-only double-entry LedgerEntry ledger."],
+        ["Credit terms to buyers", "Settlement / Ordering", "Enforce a per-buyer-org credit limit synchronously at checkout so an order cannot be placed beyond the buyer's available credit."],
+        ["Notifications", "Notifications", "Deliver order, shipment, and approval-state notifications to buyers and suppliers via an idempotent worker fed by the outbox."]
+      ]
+    },
+    {
+      "kind": "definitions",
+      "definitions": [
+        {
+          "term": "Availability",
+          "description": "The single deployable modular monolith and its workers must keep the three storefronts (buyer, supplier portal, ops admin) serving during business hours; async paths (search projection, settlement, notifications, carrier ingest) must degrade gracefully and catch up via the outbox rather than dropping work."
+        },
+        {
+          "term": "Storefront latency",
+          "description": "Storefront p95 < 300ms. Checkout, the most contended path, was held to a 240ms p95 in practice (down from 820ms) even with a synchronous credit check and price re-validation."
+        },
+        {
+          "term": "Catalog search latency",
+          "description": "Catalog search p95 < 120ms, served from the OpenSearch read model (achieved 110ms p95, down from ~480ms)."
+        },
+        {
+          "term": "Money & inventory consistency",
+          "description": "Strong consistency, authoritative in PostgreSQL. Inventory reservations confirm under a row lock with version and a CHECK (available >= 0); ledger writes are transactional and append-only. No overselling, no double settlement, ever."
+        },
+        {
+          "term": "Search consistency",
+          "description": "Eventual consistency is acceptable. The OpenSearch projection may lag and must tolerate out-of-order events via a monotonic per-SKU version guard; search is never authoritative for money because checkout always re-prices from Postgres."
+        },
+        {
+          "term": "Auditability",
+          "description": "Every supplier approval is an append-only ApprovalDecision; every money movement is an append-only LedgerEntry (double-entry). State transitions are explicit and table-driven so history is reconstructable."
+        },
+        {
+          "term": "Tenant isolation",
+          "description": "Multi-tenant by org_id with row-level scoping plus RBAC. A user can only ever see and act on data for orgs they hold a Membership in, enforced at the data-access layer, not just the UI."
+        },
+        {
+          "term": "Idempotency",
+          "description": "All external and async integrations (carrier webhooks, SQS consumers) and money-affecting operations must be idempotent so retries and redeliveries cannot double-apply effects."
+        }
+      ]
+    },
+    {
+      "kind": "stats",
+      "metrics": [
+        {"label": "Active buyers", "value": "~5,200", "note": "restaurants, cafes, convenience stores, small grocers"},
+        {"label": "Active suppliers", "value": "~480", "note": "manufacturers, distributors, farms"},
+        {"label": "SKUs", "value": "~140,000", "note": "each Sku belongs to one supplier"},
+        {"label": "Peak orders/day", "value": "~9,000", "note": "sustained with headroom on a single Postgres-backed monolith"},
+        {"label": "GMV", "value": "~38B KRW/month", "note": "drove the strong-consistency bar for money"},
+        {"label": "Storefront p95 target", "value": "< 300ms", "note": "checkout held to 240ms p95"},
+        {"label": "Catalog search p95 target", "value": "< 120ms", "note": "achieved 110ms via OpenSearch read model"}
+      ]
+    },
+    {
+      "kind": "numbered",
+      "items": [
+        "Money is integer KRW. The Korean won has no minor units; all amounts are stored as bigint and every arithmetic operation is integer math. Floating-point money is forbidden, and rounding is applied only at fee calculation under one documented rule.",
+        "Prices are immutable once snapshotted. At placement the resolved price (ContractPrice / PriceList / promotion) is copied onto the OrderLine and never recomputed for that line; a later catalog or price-list change must not alter an already-placed order.",
+        "Re-price and re-validate at supplier accept. Because there is a gap between place and accept, the FulfillmentGroup is re-priced and re-validated at confirm to catch stale prices before the soft-hold is confirmed into a StockReservation.",
+        "Inventory is authoritative at the database. A soft-hold lives in Redis with a TTL, but the hard confirm takes a SELECT ... FOR UPDATE on the InventoryItem row, checks a version, and is guarded by CHECK (available >= 0) and a partial-unique constraint on active reservations. The app never decides stock availability on its own.",
+        "Supplier approval is maker-checker. RISK_REVIEW (maker) and COMPLIANCE_APPROVAL (checker) must be performed by different reviewers; the separation is enforced, not advisory, and every decision is written append-only.",
+        "External and async integrations are idempotent by design. Carrier webhooks dedupe on (event_type, external_id) against a processed-events table; SQS consumers key off the message dedup id; LedgerEntry carries a UNIQUE constraint per (group, type) so settlement cannot run twice.",
+        "State machines are explicit and DB-enforced. Order, FulfillmentGroup, Shipment, and SupplierApplication transitions are table-driven and validated at the database boundary; statuses are a fixed enumerated set, not free-form strings.",
+        "Tenancy is enforced at the data layer. Every query is scoped by org_id and gated by RBAC; isolation cannot rely on the frontend filtering correctly."
+      ]
+    },
+    {
+      "kind": "callout",
+      "tone": "insight",
+      "title": "The requirement that drove the architecture most",
+      "body": "Two requirements did the heavy lifting. First, the single multi-supplier cart forced the Order/FulfillmentGroup split, and that per-supplier sub-order became the unit that ordering, fulfillment, and settlement all hang off of, more than any other modeling decision it shaped the system. Second, separating correctness classes, strong consistency for money and inventory in Postgres versus eventual consistency for search, let us build a DB-authoritative reservation and an outbox-fed OpenSearch read model without either compromising the other. A 6-person team could meet a < 300ms storefront, a < 120ms search, and zero-oversell bar precisely because those two requirements told us exactly where to spend consistency and where to spend speed."
+    }
+  ]
+}

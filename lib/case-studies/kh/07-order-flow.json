@@ -1,0 +1,208 @@
+{
+  "id": "order-flow",
+  "title": "Order Flow",
+  "summary": "How a single multi-supplier cart becomes a set of per-supplier FulfillmentGroups: the placement transaction, the price-snapshot and credit-check gates, the two-phase inventory hold, the outbox event, and the supplier accept/confirm handshake that drives the FulfillmentGroup state machine.",
+  "blocks": [
+    {
+      "kind": "lead",
+      "text": "The order flow is the spine of the platform: a buyer places one Cart that spans multiple suppliers, and we split it into per-supplier FulfillmentGroups that become the unit every downstream context — fulfillment, settlement, supplier UX — acts on."
+    },
+    {
+      "kind": "prose",
+      "paragraphs": [
+        "A buyer's Cart can hold CartItems from many suppliers at once — that is the whole point of a managed marketplace. But suppliers do not act on \"an order\"; they act on \"my part of an order.\" So the first thing placement does is split the Cart into one FulfillmentGroup per supplier, each owning its own OrderLines, its own state, its own acceptance, its own shipment, and ultimately its own Settlement. The buyer-level Order status is never stored as a primary fact; it is derived from the states of its FulfillmentGroups. This split, done at placement and never later, is decision #3 in our canonical set and the single most load-bearing modeling choice we made.",
+        "Placement itself is a synchronous transaction with four gates, in order: snapshot pricing, credit-limit check, inventory soft-hold, and tax/fee calc. Pricing is resolved per OrderLine from the buyer-specific ContractPrice if one exists, otherwise the supplier's PriceList, and then SNAPSHOTTED onto the OrderLine as immutable integer KRW. We never recompute money from a live price after this point; the snapshot is the contract. The credit-limit check is deliberately synchronous against the buyer Organization — it costs us a little checkout latency, but a managed marketplace extending credit terms cannot place an order it might not be allowed to extend, and reconciling that asynchronously after the fact was strictly worse.",
+        "Inventory is reserved as a two-phase operation. At placement we take a soft-hold: a Redis StockReservation with a TTL, per OrderLine. This is fast, contention-light, and reversible — if the buyer never gets a supplier to accept, the hold simply expires and sweeps. It is explicitly NOT authoritative. The authoritative decrement happens only when a supplier accepts the group, at which point the soft-hold is hard-confirmed into a Postgres StockReservation under a row lock with a version check, and we re-price and re-validate to catch anything that went stale between placement and confirm. Two phases, two different stores, two different consistency guarantees, on purpose.",
+        "All of placement — the Order, every FulfillmentGroup, every OrderLine, and the OutboxEvent(OrderPlaced) — commits inside one Postgres transaction. We never write to the database and then publish to SQS as a second step; that dual-write is exactly the failure mode the transactional outbox exists to remove (decision #2). The OrderPlaced event lands in the same commit as the order; a worker drains the outbox and publishes to SNS/SQS afterward. If the transaction rolls back, nothing was published, because nothing was written."
+      ]
+    },
+    {
+      "kind": "flow",
+      "title": "Order placement: Cart to confirmed FulfillmentGroups",
+      "steps": [
+        {
+          "step": 1,
+          "actor": "Buyer (storefront)",
+          "title": "Place the multi-supplier Cart",
+          "detail": "The buyer submits a Cart whose CartItems may span several suppliers. We validate the cart is non-empty, the buyer Membership has the Role to place orders, and stamp an idempotency key (Redis) so a retried submit cannot create a second Order.",
+          "state": "Cart: DRAFT"
+        },
+        {
+          "step": 2,
+          "actor": "Ordering module",
+          "title": "Split into one FulfillmentGroup per supplier",
+          "detail": "Group CartItems by Sku.supplierId. Each group becomes a FulfillmentGroup with its own OrderLines. The buyer-level Order is the parent; its status will be DERIVED from the groups, never stored independently.",
+          "state": "Order: PLACED (pending commit)"
+        },
+        {
+          "step": 3,
+          "actor": "Pricing module",
+          "title": "Snapshot pricing per OrderLine",
+          "detail": "Resolve each line's unit price: buyer-specific ContractPrice if present, else the supplier's PriceList. Snapshot the resolved integer-KRW price, quantity, and computed line total onto the OrderLine. From here the price is immutable for the life of the order.",
+          "state": "Order: PLACED (pending commit)"
+        },
+        {
+          "step": 4,
+          "actor": "Settlement / credit",
+          "title": "Synchronous credit-limit check",
+          "detail": "Sum the snapshotted order total and check it against the buyer Organization's available credit. This is synchronous and blocking by design; failing here aborts placement with no side effects (nothing reserved, nothing written).",
+          "state": "Order: PLACED (pending commit)",
+          "branches": ["CREDIT_DECLINED -> abort placement, release nothing"]
+        },
+        {
+          "step": 5,
+          "actor": "Inventory module",
+          "title": "Inventory soft-hold (Redis, TTL)",
+          "detail": "For each OrderLine take a soft-hold StockReservation in Redis with a TTL. Locks are acquired in sku_id order to keep lock ordering consistent. This is a reversible, non-authoritative hold; if no supplier accepts, it expires and is swept.",
+          "state": "Order: PLACED (pending commit)",
+          "branches": ["INSUFFICIENT_STOCK -> abort, release prior holds"]
+        },
+        {
+          "step": 6,
+          "actor": "Pricing / tax",
+          "title": "Tax and fee calculation",
+          "detail": "Compute taxes and platform fees on the snapshotted totals using integer math; the single documented rounding rule is applied only here, at fee calculation, never on line prices.",
+          "state": "Order: PLACED (pending commit)"
+        },
+        {
+          "step": 7,
+          "actor": "Ordering module (DB tx)",
+          "title": "Persist Order + groups + OutboxEvent in one transaction",
+          "detail": "Insert the Order, every FulfillmentGroup (status AWAITING_SUPPLIER), every OrderLine, and an OutboxEvent(OrderPlaced) inside a single Postgres transaction. Commit is the point of no return; either all of it is durable or none of it is.",
+          "state": "FulfillmentGroup: AWAITING_SUPPLIER"
+        },
+        {
+          "step": 8,
+          "actor": "Notifications worker",
+          "title": "Publish OrderPlaced via outbox",
+          "detail": "A worker drains the OutboxEvent table and publishes OrderPlaced to SNS/SQS. Consumers are idempotent (keyed by event id), so SQS redelivery cannot double-notify a supplier.",
+          "state": "FulfillmentGroup: AWAITING_SUPPLIER"
+        },
+        {
+          "step": 9,
+          "actor": "Supplier (portal)",
+          "title": "Supplier accepts or rejects the group",
+          "detail": "Each supplier sees only their FulfillmentGroup and accepts or rejects it independently. Rejection moves that one group to REJECTED and releases its hold; it does not block the buyer's other groups.",
+          "state": "FulfillmentGroup: AWAITING_SUPPLIER",
+          "branches": ["REJECT -> REJECTED (release soft-hold)", "no action before TTL -> hold expires, sweep"]
+        },
+        {
+          "step": 10,
+          "actor": "Inventory + Ordering (DB tx)",
+          "title": "Confirm reservation on ACCEPT (re-price + hard-confirm)",
+          "detail": "On accept we re-price and re-validate against current Postgres data to catch stale prices, then hard-confirm: SELECT ... FOR UPDATE the InventoryItem row, decrement available under a version check and CHECK (available >= 0), and promote the Redis soft-hold to a durable Postgres StockReservation. The group transitions to ACCEPTED.",
+          "state": "FulfillmentGroup: ACCEPTED",
+          "branches": ["stale price / version conflict -> reject confirm, surface to supplier", "deadlock 40P01 -> bounded retry"]
+        }
+      ]
+    },
+    {
+      "kind": "states",
+      "title": "FulfillmentGroup state machine",
+      "states": [
+        {
+          "state": "AWAITING_SUPPLIER",
+          "description": "Created at placement inside the order transaction. The soft-hold is live in Redis; the supplier has not yet acted. This is the only entry state.",
+          "transitions": [
+            { "on": "supplier accepts (re-price + hard-confirm)", "to": "ACCEPTED" },
+            { "on": "supplier rejects", "to": "REJECTED" },
+            { "on": "buyer/ops cancels before acceptance", "to": "CANCELLED" }
+          ]
+        },
+        {
+          "state": "ACCEPTED",
+          "description": "Supplier has accepted; the soft-hold has been hard-confirmed into a Postgres StockReservation under a row lock. Eligible to begin fulfillment.",
+          "transitions": [
+            { "on": "allocation begins (inventory decremented)", "to": "FULFILLING" },
+            { "on": "cancel (compensating release of reservation)", "to": "CANCELLED" }
+          ]
+        },
+        {
+          "state": "FULFILLING",
+          "description": "Inventory allocated and one or more Shipments are being created and worked (picking/packing). May split by DC and by partial availability.",
+          "transitions": [
+            { "on": "all lines dispatched", "to": "SHIPPED" },
+            { "on": "some lines dispatched, others pending", "to": "PARTIALLY_SHIPPED" },
+            { "on": "cancel before dispatch", "to": "CANCELLED" }
+          ]
+        },
+        {
+          "state": "PARTIALLY_SHIPPED",
+          "description": "A subset of the group's OrderLines have shipped while the remainder are still being fulfilled (e.g., split across DCs or staged availability).",
+          "transitions": [
+            { "on": "remaining lines dispatched", "to": "SHIPPED" }
+          ]
+        },
+        {
+          "state": "SHIPPED",
+          "description": "All ShipmentLines for the group have been dispatched to carriers; we are ingesting TrackingEvents via carrier webhooks.",
+          "transitions": [
+            { "on": "delivery confirmed + ProofOfDelivery captured", "to": "DELIVERED" }
+          ]
+        },
+        {
+          "state": "DELIVERED",
+          "description": "Delivery confirmed and ProofOfDelivery (photo/signature in S3) captured; ShipmentDelivered emitted. The group is now eligible for settlement.",
+          "transitions": [
+            { "on": "settlement worker computes payout/ledger entries", "to": "SETTLED" }
+          ]
+        },
+        {
+          "state": "SETTLED",
+          "description": "Terminal. Settlement and Payout computed, LedgerEntry rows written (append-only, double-entry). No further transitions.",
+          "transitions": []
+        },
+        {
+          "state": "REJECTED",
+          "description": "Terminal branch. Supplier declined the group; the soft-hold is released and no inventory is confirmed. Other groups in the same Order are unaffected.",
+          "transitions": []
+        },
+        {
+          "state": "CANCELLED",
+          "description": "Terminal branch. Cancelled before delivery (by buyer or ops); any active reservation is released via a compensating action.",
+          "transitions": []
+        }
+      ]
+    },
+    {
+      "kind": "prose",
+      "paragraphs": [
+        "Order-level status is derived: an Order whose groups are a mix of SHIPPED/DELIVERED and still-FULFILLING is PARTIALLY_*; an Order whose groups are all DELIVERED/SETTLED is COMPLETED; an Order whose groups all reached REJECTED/CANCELLED is CANCELLED. We never let an Order status drift out of sync with its groups because it is computed from them, not stored beside them.",
+        "Every transition above is enforced by an explicit, table-driven state machine (decision #6), not by ad hoc if-statements scattered across services. The allowed (from_state, event, to_state) tuples live in a transitions table, and the DB rejects any update that does not correspond to a permitted transition. That made the state machine auditable, testable in isolation, and impossible to bypass by a stray code path."
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "typescript",
+      "caption": "Transactional placement: split into FulfillmentGroups, snapshot prices, and write the OutboxEvent in one Postgres transaction (no dual writes).",
+      "code": "async function placeOrder(cart: Cart, buyerOrgId: string, idemKey: string): Promise<Order> {\n  // Idempotency: a retried submit returns the original Order instead of creating a new one.\n  const existing = await idempotency.lookup(idemKey);\n  if (existing) return existing.order;\n\n  // 1. Split the multi-supplier cart into one FulfillmentGroup per supplier.\n  const groups = groupBySupplier(cart.items); // Map<supplierId, CartItem[]>\n\n  // 2. Snapshot pricing per line: ContractPrice (buyer-specific) > PriceList. Integer KRW.\n  const priced = await pricing.snapshot(buyerOrgId, groups); // immutable unit + line totals\n\n  // 3. Synchronous credit-limit check against the buyer Organization (blocking by design).\n  const orderTotal = sumLineTotals(priced); // bigint won, no minor units\n  await credit.assertWithinLimit(buyerOrgId, orderTotal); // throws CreditDeclined\n\n  // 4. Two-phase inventory: soft-hold in Redis (TTL). Lock SKUs in sku_id order (deadlock avoidance).\n  const holds = await inventory.softHold(\n    priced.lines.sort((a, b) => (a.skuId < b.skuId ? -1 : 1))\n  ); // throws InsufficientStock -> prior holds released\n\n  // 5. Tax/fee on snapshotted totals; the single documented rounding rule is applied only here.\n  const fees = pricing.calcFees(priced);\n\n  // 6. Persist Order + groups + OutboxEvent atomically. Commit is the point of no return.\n  return db.transaction(async (tx) => {\n    const order = await tx.orders.insert({\n      buyerOrgId,\n      status: 'PLACED',\n      total: orderTotal,\n      fees,\n    });\n\n    for (const [supplierId, lines] of priced.bySupplier) {\n      const fg = await tx.fulfillmentGroups.insert({\n        orderId: order.id,\n        supplierId,\n        status: 'AWAITING_SUPPLIER', // the only entry state\n      });\n      await tx.orderLines.insertMany(fg.id, lines); // snapshotted price is immutable from here\n    }\n\n    // Transactional outbox: published by a worker AFTER commit. No DB-then-SQS dual write.\n    await tx.outbox.insert({\n      eventType: 'OrderPlaced',\n      aggregateId: order.id,\n      payload: { orderId: order.id, buyerOrgId, holdIds: holds.ids },\n    });\n\n    await tx.idempotency.record(idemKey, order.id);\n    return order;\n  });\n}"
+    },
+    {
+      "kind": "code",
+      "language": "typescript",
+      "caption": "Supplier accept: re-price/re-validate, then hard-confirm the soft-hold under a row lock with a version + CHECK guard. Transition is DB-enforced.",
+      "code": "async function acceptGroup(groupId: string, supplierUserId: string): Promise<void> {\n  await db.transaction(async (tx) => {\n    // Guarded transition: only AWAITING_SUPPLIER -> ACCEPTED is permitted by the transitions table.\n    const fg = await tx.fulfillmentGroups.selectForUpdate(groupId);\n    assertTransition(fg.status, 'ACCEPTED'); // throws on illegal (from,to)\n\n    // Re-price + re-validate against current Postgres data to catch stale prices since placement.\n    await pricing.revalidateSnapshot(fg); // throws StalePrice -> surface to supplier, no confirm\n\n    for (const line of await tx.orderLines.byGroup(groupId)) {\n      // Hard-confirm: lock the inventory row, decrement under version + CHECK (available >= 0).\n      const item = await tx.inventoryItems.selectForUpdate(line.skuId, line.location);\n      if (item.available < line.qty) throw new InsufficientStock(line.skuId);\n      await tx.inventoryItems.decrement({\n        skuId: line.skuId,\n        location: line.location,\n        qty: line.qty,\n        expectedVersion: item.version, // optimistic version guard\n      }); // CHECK (available >= 0) is the last line of defense against oversell\n\n      // Promote the Redis soft-hold into a durable Postgres StockReservation (CONFIRMED).\n      await tx.stockReservations.confirm(line.reservationId);\n    }\n\n    await tx.fulfillmentGroups.transition(groupId, 'ACCEPTED');\n    await tx.outbox.insert({\n      eventType: 'GroupAccepted',\n      aggregateId: groupId,\n      payload: { groupId },\n    });\n  }); // bounded retry wraps this call on deadlock (SQLSTATE 40P01)\n}"
+    },
+    {
+      "kind": "callout",
+      "tone": "insight",
+      "title": "Idempotent placement and re-pricing at confirm",
+      "body": "Two correctness properties hold the whole flow together. First, placement is idempotent: every submit carries an idempotency key (Redis), so a retried or double-clicked checkout returns the original Order rather than creating a second one — idempotency is a design property here, not a patch bolted on later. Second, the snapshot taken at placement is provisional until a supplier acts. Between placement (AWAITING_SUPPLIER) and accept (ACCEPTED) a ContractPrice or PriceList can change, so on accept we re-price and re-validate against current Postgres before hard-confirming the reservation. A stale price aborts the confirm and surfaces back to the supplier instead of silently shipping at a wrong price. The companion rule from the search context applies here too: OpenSearch is never authoritative for money — checkout and confirm always re-price from Postgres."
+    },
+    {
+      "kind": "callout",
+      "tone": "warning",
+      "title": "The soft-hold is not authoritative",
+      "body": "The Redis soft-hold exists to reserve intent cheaply and reversibly while a supplier decides; it is explicitly not the source of truth for stock. Authoritative inventory lives in Postgres and is only decremented under SELECT ... FOR UPDATE with a version check and a CHECK (available >= 0) at confirm time. Treating the Redis hold as authoritative is exactly the check-then-write race that caused our oversell incident; the database row lock at confirm is the fix, and the soft-hold's only jobs are speed and reversibility via TTL expiry sweeping."
+    },
+    {
+      "kind": "stats",
+      "metrics": [
+        { "label": "Checkout p95", "value": "240ms", "delta": "from 820ms", "note": "includes the synchronous credit-limit check we chose to keep blocking" },
+        { "label": "Order-placement error rate", "value": "0.1%", "delta": "from 2.3%", "note": "after guarded transitions + idempotent placement" },
+        { "label": "Oversell incidents", "value": "0 / month", "delta": "from ~12 / month", "note": "DB-authoritative reservation at confirm" },
+        { "label": "Sustained peak", "value": "9,000 orders/day", "note": "with headroom on the modular monolith" }
+      ]
+    }
+  ]
+}

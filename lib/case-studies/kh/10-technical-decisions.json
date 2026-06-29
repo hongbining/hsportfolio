@@ -1,0 +1,93 @@
+{
+  "id": "technical-decisions",
+  "title": "Technical Decisions",
+  "summary": "The nine load-bearing architecture decisions behind KH Wholesale, in ADR form: what each one was for, what we chose and why, and what we deliberately rejected. The throughline is that these choices were designed to reinforce each other rather than stand alone.",
+  "blocks": [
+    {
+      "kind": "lead",
+      "text": "Every meaningful property of the platform — correctness of money, integrity of inventory, auditability of approvals, and the ability for six engineers to operate it — traces back to a small set of decisions that were made deliberately and made to fit together."
+    },
+    {
+      "kind": "prose",
+      "paragraphs": [
+        "I treat this section as the architecture's load-bearing wall. There were hundreds of small choices over the ~14 months, but nine decisions account for nearly all of the system's behavior under load, under failure, and under audit. I'm documenting them ADR-style — context, the choice and its rationale, and the alternatives I rejected — because the rejections are as informative as the selections. A decision you can't defend against its alternative isn't a decision; it's a default.",
+        "The most important thing about this set is that the decisions are not independent. They were chosen as a system. The modular monolith is what makes the transactional outbox cheap, because the outbox write and the business write share one Postgres transaction — there is no distributed commit to coordinate. The outbox is what makes idempotent consumers tractable, because every side effect downstream of an order or shipment is driven from an event with a stable id. The FulfillmentGroup split is the spine that ordering, fulfillment, and settlement all hang off of, which is why the same boundary that suppliers act on is also the boundary we settle and audit on. Integer-KRW money with immutable snapshots is what lets settlement be deterministic and disputes fall ~70%. And DB-authoritative inventory reservation is what took oversell incidents from ~12/month to 0 — but only because the monolith let us put the reservation confirm and the order persistence in the same transaction.",
+        "Put differently: each decision below makes at least one other decision simpler or safer. That mutual reinforcement is why a Postgres-backed monolith comfortably carried ~5,200 active buyers, ~480 suppliers, ~140,000 SKUs, and a sustained 9,000 orders/day peak with headroom — boring tech, chosen on purpose, composed carefully."
+      ]
+    },
+    {
+      "kind": "table",
+      "caption": "Architecture Decision Record — the canonical nine decisions for KH Wholesale.",
+      "columns": ["Decision", "Context", "Choice & rationale", "Alternatives rejected"],
+      "rows": [
+        [
+          "Modular monolith over microservices",
+          "A 6-engineer team (author as lead) building ordering, fulfillment, settlement, catalog, identity, and supplier onboarding at once. The hardest invariants — money and inventory — span contexts and demand transactional integrity.",
+          "One NestJS deployable with strict bounded-context modules (Identity, Catalog, Pricing, Ordering, Inventory, Fulfillment, Supplier, Settlement, Notifications) plus a small set of async workers. Cross-context writes can share a single Postgres transaction, so the outbox and inventory reservation get atomicity for free. Simpler ops: one deploy, one set of dashboards, one place to reason about a request. We enforce module boundaries in code, not network calls, so refactoring a boundary is a compiler problem, not a versioned-API migration.",
+          "Microservices per context — rejected: distributed transactions or sagas for ordering+inventory+settlement would have dominated a 6-person team's time; per-service deploy/observability/on-call overhead bought us nothing at this scale. Cost we accepted: module discipline must be enforced by review and lint, and the whole monolith shares one deploy and one scaling unit."
+        ],
+        [
+          "Transactional outbox + idempotent SQS consumers",
+          "Placing an order must both persist Order + FulfillmentGroups and reliably publish OrderPlaced (and similarly for ShipmentDelivered, etc.). A naive dual write to Postgres-then-SNS can succeed on one and fail on the other, dropping or duplicating events.",
+          "Writes to domain tables and an OutboxEvent row happen in the same DB transaction; a relay publishes outbox rows to SNS/SQS at-least-once. Consumers (search-projection, settlement, notifications) are idempotent, keyed by a stable event/message id with a processed-events dedup table. This gives us exactly-the-effect-once semantics on top of at-least-once delivery, without a distributed commit. Directly fixed incidents (B) double settlement and (E) SQS redelivery side effects.",
+          "Dual writes (Postgres then publish) — rejected: no atomicity, silent divergence under partial failure. CDC/Debezium off the WAL — rejected for now: extra infrastructure and operational surface a small team didn't want; the outbox keeps publishing in-transaction and explicit. Cost we accepted: the app must write and relay the outbox table, and consumers must be written to be idempotent rather than assuming once-only delivery."
+        ],
+        [
+          "FulfillmentGroup split model (per-supplier sub-orders)",
+          "A buyer places one Cart spanning multiple suppliers, but suppliers accept/reject, ship, and get paid independently. We needed one boundary that ordering, fulfillment, and settlement could all share.",
+          "On place, the Order splits into one FulfillmentGroup per supplier; OrderLines belong to a group; the group is the unit suppliers act on and the unit we settle. Order status is derived from its groups (PLACED → PARTIALLY_* / COMPLETED / CANCELLED), so partial acceptance, partial shipment, and per-supplier cancellation are first-class, not special cases. Settlement, payouts, and ledger entries key off the group, so 'who gets paid for what' is unambiguous.",
+          "A flat order with mixed-supplier lines and no sub-order entity — rejected: every partial state (one supplier rejects, another ships) becomes a bespoke flag, and settlement can't cleanly attribute money. Modeling the split late — rejected by hindsight; retrofitting it would have touched ordering, fulfillment, and settlement at once. Cost we accepted: more entities and a derived order-status computation to keep correct."
+        ],
+        [
+          "Two-phase inventory reservation: Redis soft-hold + Postgres hard-confirm",
+          "At checkout we must hold stock for a hot SKU long enough to place the order, but the database must remain the authority on what's actually available so we never oversell under concurrency.",
+          "Phase 1: a Redis soft-hold with a TTL reserves units optimistically at cart/checkout, cheap and expiring on its own if the order never completes. Phase 2 (on supplier ACCEPT/allocation): a hard confirm under SELECT ... FOR UPDATE on the InventoryItem row, decrementing available atomically with a CHECK (available >= 0) and a version column. Locks are acquired in sorted sku_id order with bounded retry on deadlock (40P01). This took oversell from ~12/month to 0 (incident A) and eliminated multi-line deadlocks (incident D).",
+          "App-level availability check then write — rejected: the canonical check-then-write race that caused overselling. Redis as the sole source of truth — rejected: fast but not durable or transactional with the order; we keep Redis as a soft-hold only and let Postgres be authoritative. Cost we accepted: write hotspots and a throughput ceiling on the most popular SKUs, plus reservation-expiry sweeping to reclaim abandoned holds."
+        ],
+        [
+          "Money as integer KRW + immutable price snapshots",
+          "GMV is ~38B KRW/month across negotiated ContractPrices, price lists, promotions, and fees. KRW has no minor units, and floating-point or re-derived prices are a direct path to settlement disputes.",
+          "All amounts are integer KRW stored as bigint; all money math is integer. The agreed price (ContractPrice/PriceList) is snapshotted onto OrderLine at placement and is immutable thereafter, so what the buyer agreed to is exactly what we ship and settle. Rounding is applied only at fee calculation, under one documented rule. This determinism is the main reason settlement disputes fell ~70% (and underpins fix F for rounding/timezone mismatches).",
+          "Floating-point money or a generic Decimal carried loosely through the stack — rejected: rounding drift and non-reproducible totals. Re-deriving prices at settlement from live price lists — rejected: prices change, and the buyer must be settled on the price they were quoted, not today's. Cost we accepted: more storage for snapshots and the discipline of never mutating a placed OrderLine's price."
+        ],
+        [
+          "Explicit, table-driven state machines with DB-enforced transitions",
+          "FulfillmentGroup, Shipment, and SupplierApplication each move through many states with legal and illegal transitions. Implicit status updates scattered across handlers are how you end up in impossible states.",
+          "Each lifecycle is an explicit state machine: FulfillmentGroup (AWAITING_SUPPLIER → ACCEPTED → FULFILLING → SHIPPED → DELIVERED → SETTLED, branches REJECTED/CANCELLED/PARTIALLY_SHIPPED), Shipment (CREATED → ALLOCATED → PICKING → PACKED → DISPATCHED → IN_TRANSIT → DELIVERED, branches EXCEPTION/RETURNED), and approval (APPLIED → DOCS_SUBMITTED → AUTOMATED_CHECKS → RISK_REVIEW → COMPLIANCE_APPROVAL → CATALOG_ONBOARDING → ACTIVATED). Allowed transitions are table-driven and enforced at the DB so an illegal transition can't be persisted regardless of which code path attempts it.",
+          "Free-form status fields updated ad hoc in service code — rejected: no single source of truth for legality, and impossible states leak in. A heavyweight external workflow engine — rejected: overkill for a monolith that already owns the data; the transitions live next to the rows they govern. Cost we accepted: the transition tables and guards are extra code to maintain as the business adds states."
+        ],
+        [
+          "OpenSearch read model with per-SKU version guards + re-price at checkout",
+          "Catalog search across ~140,000 SKUs needs p95 < 120ms; Postgres alone couldn't hit that for full-text/faceted search. But a search index is eventually consistent and out-of-order events can show stale prices.",
+          "Catalog is projected into OpenSearch via the outbox, kept eventually consistent. Each SKU carries a monotonic version in the projection; the search-projection worker drops events older than the version it has already applied, so out-of-order delivery can't regress a document. Crucially, search is never authoritative for money — checkout always re-prices from Postgres. This delivered search p95 ~480ms → 110ms while making stale-price exposure harmless (incident C).",
+          "Searching directly against Postgres — rejected: can't meet the latency target at this catalog size and query shape. Treating the search index as a source of truth for price — rejected: projection lag would let a buyer check out at a stale price. Cost we accepted: a short projection lag and the operational weight of a second data store kept in sync via the outbox."
+        ],
+        [
+          "Maker-checker supplier approval with append-only audit log",
+          "Onboarding a supplier touches business-registration validity (NTS gov API), bank-account verification, duplicate checks, risk, and compliance. In B2B this must be defensible after the fact and free of single-person override.",
+          "The workflow enforces maker-checker separation: RISK_REVIEW (the maker) and COMPLIANCE_APPROVAL (a different reviewer, the checker) cannot be the same person. Every decision is recorded in an append-only ApprovalDecision log — decisions are added, never edited or deleted — so the full history (including INFO_REQUESTED loops and REJECTED outcomes) is reconstructable. Automating the checks (registration, bank, duplicate) while keeping human approval gated took onboarding from 18 business days to 4 (SLA target < 5).",
+          "Single-reviewer approval — rejected: no separation of duties, a compliance and fraud risk. Mutable approval records or status-only history — rejected: you can't prove what happened or who decided. Cost we accepted: a slightly heavier workflow with two human gates and an ever-growing append-only log."
+        ],
+        [
+          "RBAC + org_id row-level scoping for tenant isolation",
+          "One platform serves ~5,200 buyer orgs and ~480 supplier orgs over a shared schema-per-context Postgres database. A buyer must never see another buyer's orders, prices, or settlements, and a supplier must only see its own FulfillmentGroups.",
+          "Identity models Organization (with org_type), User, and Membership (user↔org with Role). Authorization is RBAC by Role, and every tenant-scoped table is scoped by org_id with row-level enforcement, so isolation is a property of the data layer rather than something each query author must remember. Combined with snapshotted, org-scoped ContractPrices, a buyer's negotiated prices are structurally invisible to others.",
+          "Separate database/schema per tenant — rejected: thousands of buyer orgs makes per-tenant isolation operationally absurd to migrate and run. Isolation enforced only in application query filters — rejected: one forgotten WHERE org_id = ? is a cross-tenant leak; we push scoping down to the row level. Cost we accepted: org_id discipline on every tenant-scoped table and the indexes to keep those scoped queries fast."
+        ]
+      ]
+    },
+    {
+      "kind": "callout",
+      "tone": "insight",
+      "title": "The decisions are a system, not a menu",
+      "body": "The monolith is what makes the outbox atomic (one transaction, no distributed commit). The outbox is what makes idempotent consumers and the OpenSearch projection reliable. The FulfillmentGroup split is the shared boundary for ordering, fulfillment, and settlement, which is why integer-KRW snapshots make settlement deterministic on the exact unit suppliers act on. DB-authoritative reservation is correct precisely because the monolith lets the confirm and the order persist in one transaction. Remove any one of these and two others get harder. That coupling — by design — is why a six-person team could ship and operate this."
+    },
+    {
+      "kind": "prose",
+      "paragraphs": [
+        "If there is a single bias visible across this table, it is a preference for putting correctness at the database — reservations, transitions, money invariants, and tenant scoping are all enforced where the data lives, not hoped for in application code. The cost of that bias is real: write hotspots on popular SKUs, a shared deploy, and module discipline that has to be enforced by review. We took those costs knowingly because the alternative — distributed systems complexity in service of theoretical scale we didn't have — would have spent a small team's entire budget on operations instead of product.",
+        "The validation is in the results: oversell incidents ~12/month → 0, order-placement error rate 2.3% → 0.1%, checkout p95 820ms → 240ms, catalog search p95 ~480ms → 110ms, supplier onboarding 18 → 4 business days, settlement disputes down ~70%, a sustained 9,000 orders/day peak with headroom, and on-call pages roughly halved. None of those came from a clever framework. They came from nine decisions chosen to reinforce one another and enforced where it counts."
+      ]
+    }
+  ]
+}

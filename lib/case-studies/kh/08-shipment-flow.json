@@ -1,0 +1,199 @@
+{
+  "id": "shipment-flow",
+  "title": "Shipment Flow",
+  "summary": "How an ACCEPTED FulfillmentGroup turns into physical shipments: inventory allocation, DC/partial splits, per-carrier adapter handoff, webhook-driven tracking ingest, proof-of-delivery capture, and the ShipmentDelivered event that makes a group settlement-eligible.",
+  "blocks": [
+    {
+      "kind": "lead",
+      "text": "Once a supplier accepts a FulfillmentGroup, fulfillment is the part of the system where the digital order becomes a physical movement of goods — so I built it around hard inventory allocation, carrier adapters, and idempotent webhook ingest, because anything sloppy here turns into oversells, lost packages, or double settlements."
+    },
+    {
+      "kind": "prose",
+      "paragraphs": [
+        "The Ordering context produces FulfillmentGroups (the per-supplier sub-order), and the Fulfillment context consumes them. The handoff point is precise: a group sits in ACCEPTED with a confirmed StockReservation behind it, and Fulfillment's job is to allocate that reserved stock, produce one or more Shipments, drive them through carriers, and report delivery back so Settlement can run. I deliberately kept Shipment as its own aggregate with its own state machine rather than overloading FulfillmentGroup status, because a single accepted group can legitimately become several shipments — split by distribution center (DC) and by partial availability — and each of those physical parcels has an independent lifecycle, carrier, tracking number, and proof-of-delivery.",
+        "The contract between Ordering and Fulfillment is the FulfillmentGroup plus its OrderLines with snapshotted prices. Fulfillment never re-prices and never touches money math; it only moves goods and emits events. That separation is what lets Settlement treat a ShipmentDelivered event as a clean, auditable trigger rather than a place where pricing and logistics get tangled together."
+      ]
+    },
+    {
+      "kind": "flow",
+      "title": "FulfillmentGroup ACCEPTED to settlement-eligible",
+      "steps": [
+        {
+          "step": 1,
+          "actor": "Fulfillment module",
+          "title": "Allocate inventory",
+          "detail": "The confirmed StockReservation from order acceptance is converted into a hard allocation: SELECT ... FOR UPDATE on the InventoryItem row(s), then decrement InventoryItem.available atomically inside the same transaction, guarded by CHECK (available >= 0). Locks are acquired sorted by sku_id to avoid the deadlock pattern from incident (D).",
+          "state": "FulfillmentGroup: ACCEPTED -> FULFILLING"
+        },
+        {
+          "step": 2,
+          "actor": "Fulfillment module",
+          "title": "Create Shipment(s), split by DC and partial availability",
+          "detail": "OrderLines are grouped into one or more Shipments. A group can split when its lines are stocked across different DCs, or when only part of a line's quantity is currently available. Each Shipment owns ShipmentLines that reference the source location. A new Shipment starts in CREATED, then moves to ALLOCATED once its lines are bound to decremented stock.",
+          "state": "Shipment: CREATED -> ALLOCATED",
+          "branches": ["PARTIALLY_SHIPPED if only some lines/quantities ship now"]
+        },
+        {
+          "step": 3,
+          "actor": "DC / warehouse",
+          "title": "Pick and pack",
+          "detail": "Warehouse operations pick the ShipmentLines and pack the parcel. The Shipment walks PICKING then PACKED. EXCEPTION is entered here when stock is damaged or a pick shortfall is discovered.",
+          "state": "Shipment: ALLOCATED -> PICKING -> PACKED",
+          "branches": ["EXCEPTION on pick shortfall or damage"]
+        },
+        {
+          "step": 4,
+          "actor": "Carrier adapter",
+          "title": "Carrier handoff via per-carrier adapter",
+          "detail": "A per-carrier adapter creates the shipping label, registers the parcel with the Carrier, and stores the carrier tracking number and label on the Shipment. The parcel is physically handed off and the Shipment is DISPATCHED. Adapters isolate each carrier's API quirks behind one internal interface.",
+          "state": "Shipment: PACKED -> DISPATCHED"
+        },
+        {
+          "step": 5,
+          "actor": "Carrier webhook ingest",
+          "title": "Ingest TrackingEvents via webhook",
+          "detail": "The carrier posts status updates to the carrier-webhook ingest endpoint. Each adapter normalizes the carrier payload into TrackingEvents. Ingest is idempotent: dedup keyed on (event_type, external_id) against a processed-events table, so retries and out-of-order posts are safe. In-transit scans move the Shipment to IN_TRANSIT.",
+          "state": "Shipment: DISPATCHED -> IN_TRANSIT",
+          "branches": ["EXCEPTION on failed-delivery / hold scans", "RETURNED on return-to-sender"]
+        },
+        {
+          "step": 6,
+          "actor": "Carrier webhook ingest",
+          "title": "Delivered + capture ProofOfDelivery",
+          "detail": "A delivery scan transitions the Shipment to DELIVERED and triggers capture of a ProofOfDelivery (photo and/or signature) stored in S3, referenced by key on the Shipment. The POD is the audit artifact that backs any later delivery dispute.",
+          "state": "Shipment: IN_TRANSIT -> DELIVERED"
+        },
+        {
+          "step": 7,
+          "actor": "Outbox / Settlement",
+          "title": "Emit ShipmentDelivered, mark group settlement-eligible",
+          "detail": "On DELIVERED, an OutboxEvent(ShipmentDelivered) is written in the same transaction. When every Shipment for a FulfillmentGroup is DELIVERED (across all DC/partial splits), the group becomes settlement-eligible; the settlement worker consumes the event idempotently and the group ultimately moves to SETTLED.",
+          "state": "FulfillmentGroup: SHIPPED -> DELIVERED -> SETTLED"
+        }
+      ]
+    },
+    {
+      "kind": "states",
+      "title": "Shipment state machine",
+      "states": [
+        {
+          "state": "CREATED",
+          "description": "Shipment record exists with its ShipmentLines assigned, but no stock has been bound yet.",
+          "transitions": [
+            { "on": "bind allocated stock", "to": "ALLOCATED" },
+            { "on": "cancel before allocation", "to": "EXCEPTION" }
+          ]
+        },
+        {
+          "state": "ALLOCATED",
+          "description": "InventoryItem.available has been decremented atomically for this shipment's lines; the parcel is ready to be picked.",
+          "transitions": [
+            { "on": "start picking", "to": "PICKING" },
+            { "on": "stock damaged / shortfall", "to": "EXCEPTION" }
+          ]
+        },
+        {
+          "state": "PICKING",
+          "description": "Warehouse operators are pulling the ShipmentLines from DC shelves.",
+          "transitions": [
+            { "on": "pick complete", "to": "PACKED" },
+            { "on": "pick shortfall", "to": "EXCEPTION" }
+          ]
+        },
+        {
+          "state": "PACKED",
+          "description": "Parcel is packed and awaiting a carrier label and handoff.",
+          "transitions": [
+            { "on": "label created + handed to carrier", "to": "DISPATCHED" },
+            { "on": "packing defect / hold", "to": "EXCEPTION" }
+          ]
+        },
+        {
+          "state": "DISPATCHED",
+          "description": "Carrier has accepted the parcel; tracking number is registered and the first carrier scan is expected.",
+          "transitions": [
+            { "on": "in-transit scan", "to": "IN_TRANSIT" },
+            { "on": "delivery scan (direct)", "to": "DELIVERED" },
+            { "on": "carrier exception scan", "to": "EXCEPTION" }
+          ]
+        },
+        {
+          "state": "IN_TRANSIT",
+          "description": "Parcel is moving through the carrier network; TrackingEvents stream in via webhook.",
+          "transitions": [
+            { "on": "delivery scan + POD", "to": "DELIVERED" },
+            { "on": "failed delivery / hold", "to": "EXCEPTION" },
+            { "on": "return to sender", "to": "RETURNED" }
+          ]
+        },
+        {
+          "state": "DELIVERED",
+          "description": "Terminal success. ProofOfDelivery captured in S3; ShipmentDelivered emitted via the outbox. Contributes to FulfillmentGroup settlement eligibility.",
+          "transitions": [
+            { "on": "post-delivery return", "to": "RETURNED" }
+          ]
+        },
+        {
+          "state": "EXCEPTION",
+          "description": "Branch state for any anomaly (shortfall, damage, lost parcel, failed delivery). Ops resolves it forward (re-allocate/re-dispatch) or terminates into RETURNED.",
+          "transitions": [
+            { "on": "re-allocate stock", "to": "ALLOCATED" },
+            { "on": "re-dispatch", "to": "DISPATCHED" },
+            { "on": "unrecoverable / send back", "to": "RETURNED" }
+          ]
+        },
+        {
+          "state": "RETURNED",
+          "description": "Terminal failure branch. Goods came back; allocated stock is reversed back to InventoryItem.available and the line does not become settlement-eligible.",
+          "transitions": []
+        }
+      ]
+    },
+    {
+      "kind": "prose",
+      "paragraphs": [
+        "Partial shipments are not an edge case in this domain — they are the normal case. A FulfillmentGroup of, say, eight OrderLines might have five lines stocked at the Seoul DC, two at the Busan DC, and one line where only 60% of the requested quantity is on hand today. That single accepted group fans out into three Shipments: two split by DC, and the short line splitting again across a now-shipment and a later backfill shipment. Each Shipment carries only the ShipmentLines it can actually fulfill, with its own carrier, tracking number, and POD. The FulfillmentGroup is reported as PARTIALLY_SHIPPED until the last child shipment dispatches, and the Order rolls up to a derived PARTIALLY_* state until all groups complete.",
+        "Delivery is what triggers settlement, and the rule is intentionally strict: a FulfillmentGroup only becomes settlement-eligible when every one of its Shipments has reached DELIVERED. I settle on delivery rather than on dispatch because in B2B grocery the buyer can refuse perishable goods at the door, and settling money before proof-of-delivery exists would invert the dispute burden onto KH. Each DELIVERED transition writes an OutboxEvent(ShipmentDelivered) in the same transaction as the state change; the settlement worker consumes those events idempotently and only opens the group's Settlement once the full set of shipments is delivered. Returns short-circuit this entirely — a RETURNED shipment reverses its allocation and never contributes to settlement.",
+        "Because tracking truth lives at the carrier, the entire back half of this flow is event-ingest rather than request/response. We never poll carriers on a hot path; we receive webhooks, normalize them per adapter into TrackingEvents, and let the Shipment state machine advance. That keeps the system reactive and cheap, but it makes idempotency and ordering the load-bearing concern — which is exactly where incident (B), double settlement from a retried ShipmentDelivered, came from."
+      ]
+    },
+    {
+      "kind": "table",
+      "caption": "Per-carrier adapter responsibilities (one adapter per Carrier, behind a single internal interface)",
+      "columns": ["Responsibility", "What the adapter does", "KH-side artifact / guard"],
+      "rows": [
+        ["Label creation", "Calls the carrier's label/booking API, registers the parcel, returns a tracking number and printable label", "Tracking number + label key stored on Shipment; PACKED -> DISPATCHED"],
+        ["Dispatch / handoff", "Confirms manifest/pickup with the carrier and acknowledges physical handoff", "DISPATCHED transition recorded with timestamp"],
+        ["Tracking webhook", "Receives and verifies the carrier's webhook signature, normalizes its proprietary status codes into KH TrackingEvents", "Dedup on (event_type, external_id); monotonic ordering guard; drives IN_TRANSIT/DELIVERED/EXCEPTION/RETURNED"],
+        ["Proof of delivery", "Pulls the delivery photo/signature payload (or receives it on the delivery webhook) and persists it", "ProofOfDelivery row + S3 object key on Shipment"],
+        ["Exception / return mapping", "Maps carrier failure and return codes to KH EXCEPTION and RETURNED branches", "EXCEPTION/RETURNED transitions; allocation reversal on RETURNED"]
+      ]
+    },
+    {
+      "kind": "prose",
+      "paragraphs": [
+        "I chose to build per-carrier adapters rather than route everything through a single tracking aggregator. The trade-off was explicit: adapters cost us maintenance per carrier (each new carrier is real integration work), but they give us direct control over label formats, dispatch semantics, webhook signature verification, and POD retrieval — and they let us avoid an aggregator's per-event fees at 9,000 orders/day. With only a handful of carriers and a few of our own DCs, the maintenance cost stayed bounded and the control paid off, especially around delivery exceptions where aggregators tend to flatten the very status detail we need."
+      ]
+    },
+    {
+      "kind": "callout",
+      "tone": "warning",
+      "title": "Webhook idempotency is non-negotiable",
+      "body": "Carrier webhooks are at-least-once: the same delivery scan can arrive twice, and scans can arrive out of order. The original double-settlement incident (B) was exactly this — a retried ShipmentDelivered drove settlement twice. The fix that holds: every ingested event is deduplicated on (event_type, external_id) against a processed-events table before any side effect runs; TrackingEvents carry a monotonic ordering guard so a stale scan can never regress a Shipment out of DELIVERED; and the downstream LedgerEntry has a UNIQUE constraint per (group, type) so even a handler that slips through dedup cannot post a duplicate ledger row. Idempotency here is a schema-level guarantee, not a best-effort check in application code."
+    },
+    {
+      "kind": "callout",
+      "tone": "insight",
+      "title": "Allocation is the same lock discipline as ordering",
+      "body": "Shipment allocation reuses the exact concurrency rules that fixed the oversell incidents in Ordering: SELECT ... FOR UPDATE on InventoryItem rows, CHECK (available >= 0), and locks acquired in sku_id order with a bounded retry on Postgres deadlock (40P01). The two-phase reservation (Redis soft-hold at cart, hard-confirm at acceptance) means that by the time Fulfillment allocates, the stock is already reserved — but I still take the row lock and decrement authoritatively at the database, because the database is the single source of truth for inventory and the app is never allowed to be."
+    },
+    {
+      "kind": "stats",
+      "metrics": [
+        { "label": "Oversell incidents", "value": "0 / month", "delta": "from ~12 / month", "note": "DB-authoritative allocation with FOR UPDATE + CHECK (available >= 0)" },
+        { "label": "Settlement disputes", "value": "down ~70%", "note": "POD-gated settlement + idempotent ShipmentDelivered ingest" },
+        { "label": "Peak throughput", "value": "9,000 orders/day", "note": "Sustained with headroom, including DC/partial shipment fan-out" }
+      ]
+    }
+  ]
+}

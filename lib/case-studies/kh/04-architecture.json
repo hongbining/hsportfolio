@@ -1,0 +1,99 @@
+{
+  "id": "architecture",
+  "title": "Architecture",
+  "summary": "KH Wholesale runs as a single NestJS modular monolith with strict bounded-context modules, fronted by three Next.js App Router apps and backed by PostgreSQL 15, Redis, OpenSearch, and an SQS/SNS event backbone fed by a transactional outbox. A small set of async workers handle search projection, settlement, notifications, and carrier-webhook ingest. We chose this deliberately over microservices for a 6-person team: it gave us transactional integrity where it mattered and operational simplicity everywhere else.",
+  "blocks": [
+    {
+      "kind": "lead",
+      "text": "The whole platform is one deployable NestJS modular monolith plus four async workers, with bounded-context discipline enforced in the codebase and a transactional outbox decoupling synchronous writes from everything that can be eventually consistent."
+    },
+    {
+      "kind": "architecture",
+      "layers": [
+        {
+          "name": "Clients",
+          "description": "Three Next.js (App Router) frontends, one per audience, served behind CloudFront. TypeScript end to end with the backend.",
+          "components": [
+            { "name": "Buyer storefront", "role": "Catalog browse/search, multi-supplier cart, checkout, order tracking; storefront p95 target < 300ms, catalog search p95 < 120ms." },
+            { "name": "Supplier portal", "role": "Suppliers act on FulfillmentGroups (accept/reject), manage shipments, view Settlements/Payouts and statements." },
+            { "name": "Ops admin", "role": "Internal operations: supplier approval (maker-checker), catalog onboarding, dispute and settlement oversight, RBAC management." }
+          ]
+        },
+        {
+          "name": "Edge / API",
+          "description": "TLS termination, caching, and a thin BFF that fans the three frontends into the monolith's module APIs.",
+          "components": [
+            { "name": "CloudFront", "role": "CDN + edge caching for static assets and cacheable read paths; TLS termination." },
+            { "name": "API gateway / BFF", "role": "Per-frontend backend-for-frontend; authenticates requests, resolves the org context, and applies RBAC + org_id row-level scoping before calling into the monolith." }
+          ]
+        },
+        {
+          "name": "Application (NestJS modular monolith)",
+          "description": "One ECS Fargate service, one PostgreSQL database with schema-per-context. Modules are bounded contexts with explicit public interfaces; cross-module calls go through those interfaces, not raw table reads.",
+          "components": [
+            { "name": "Identity & Access", "role": "Organizations (org_type buyer/supplier), Users, Memberships, Roles; RBAC and org_id tenant scoping." },
+            { "name": "Catalog", "role": "Products, Skus, Categories; owns the source of truth and emits events for the OpenSearch projection." },
+            { "name": "Pricing", "role": "PriceLists, ContractPrices (buyer-specific negotiated), promotions; authoritative price resolution at checkout." },
+            { "name": "Ordering", "role": "Carts, Orders, and the FulfillmentGroup split (one per supplier); OrderLines with snapshotted prices; the spine of the platform." },
+            { "name": "Inventory", "role": "InventoryItem (stock per Sku per location), StockReservation; two-phase soft-hold then DB-authoritative hard-confirm." },
+            { "name": "Fulfillment", "role": "Shipments, ShipmentLines, Carriers (per-carrier adapters), TrackingEvents, ProofOfDelivery." },
+            { "name": "Supplier", "role": "SupplierApplication onboarding and maker-checker approval workflow with append-only ApprovalDecision audit log." },
+            { "name": "Settlement", "role": "Settlements, Payouts, append-only double-entry LedgerEntry, statements, fee/rounding policy." },
+            { "name": "Notifications", "role": "Templated buyer/supplier notifications, fully driven off events for idempotency." }
+          ]
+        },
+        {
+          "name": "Async workers",
+          "description": "Separate processes consuming SQS, all idempotent. Kept out of the request path so a slow projection or carrier callback never blocks checkout.",
+          "components": [
+            { "name": "search-projection worker", "role": "Consumes Catalog/Pricing events and projects the OpenSearch read model with per-SKU monotonic version guards." },
+            { "name": "settlement worker", "role": "Consumes ShipmentDelivered to build Settlements/Payouts and write LedgerEntries; idempotent and dedup-guarded against double settlement." },
+            { "name": "notifications worker", "role": "Consumes domain events to send buyer/supplier notifications, keyed by message dedup id." },
+            { "name": "carrier-webhook ingest", "role": "HTTP endpoint that receives carrier callbacks, dedups by (event_type, external_id), and emits TrackingEvents into the system." }
+          ]
+        },
+        {
+          "name": "Data & Messaging",
+          "description": "PostgreSQL is the single authoritative store; everything else is a derived or transport concern.",
+          "components": [
+            { "name": "PostgreSQL 15 (RDS)", "role": "Primary store; one database, schema-per-context, row-level scoping by org_id; integer KRW bigint money; DB-enforced state-machine transitions and the OutboxEvent table." },
+            { "name": "Redis (ElastiCache)", "role": "Cache, rate limiting, inventory soft-holds with TTL, and idempotency keys." },
+            { "name": "OpenSearch", "role": "Catalog search read model; eventually consistent via the outbox; never authoritative for money." },
+            { "name": "SQS + SNS", "role": "Async messaging fed by the transactional outbox; idempotent consumers, dead-letter queues with alarms." },
+            { "name": "Transactional outbox", "role": "OutboxEvent rows written in the same DB transaction as the state change, then relayed to SNS/SQS — no dual writes." },
+            { "name": "S3", "role": "Documents (business registration, certificates) and proof-of-delivery photos/signatures." }
+          ]
+        },
+        {
+          "name": "Observability",
+          "description": "OpenTelemetry instrumentation across the monolith and workers, exported to a Prometheus/Grafana/Tempo stack.",
+          "components": [
+            { "name": "OpenTelemetry", "role": "Distributed traces and metrics across HTTP requests, outbox relay, and worker consumers; trace context propagated through SQS messages." },
+            { "name": "Prometheus", "role": "Metrics and SLO alerting (storefront/search p95, queue depth, DLQ alarms, oversell/dispute counters)." },
+            { "name": "Grafana / Tempo", "role": "Dashboards and trace exploration to follow a request from checkout through outbox into the settlement worker." }
+          ]
+        }
+      ],
+      "notes": [
+        "Request path (synchronous): Client -> CloudFront -> API gateway/BFF (authn + RBAC + org_id scoping) -> NestJS module -> PostgreSQL inside one transaction. Checkout always re-prices from Postgres and reserves inventory at the database; nothing in the hot path depends on OpenSearch or a worker.",
+        "Event path (asynchronous): the same transaction that mutates state also writes an OutboxEvent; a relay publishes it to SNS/SQS; idempotent workers (search-projection, settlement, notifications) and the carrier-webhook ingest consume it. Effects are keyed by idempotency/dedup ids so SQS redelivery and webhook retries are safe.",
+        "One deployable: all modules ship together on ECS Fargate against one RDS database. We scale the service horizontally and run workers as separate processes, accepting shared deploy/scaling as the cost of transactional integrity and operational simplicity."
+      ]
+    },
+    {
+      "kind": "prose",
+      "paragraphs": [
+        "We built KH as a modular monolith, not a constellation of microservices, and that was the single most consequential architecture decision. With six engineers owning ordering, fulfillment, settlement, catalog, identity, and inventory, the operational tax of a dozen independently deployed services — separate pipelines, cross-service contracts, distributed transactions, per-service on-call — would have consumed the team before we shipped. A single NestJS deployable against one PostgreSQL database let us keep the parts of the system that must agree on money and stock inside one transaction, where correctness is a database guarantee rather than a saga we hand-roll and hope to get right.",
+        "The discipline that makes a monolith survivable is module boundaries. Each bounded context is its own NestJS module with a schema-per-context in Postgres and an explicit public interface. Ordering does not reach into Inventory's tables; it calls Inventory's API and lets Inventory enforce its own invariants. That keeps the seams visible, so if we ever genuinely need to extract a context into its own service, the cut line already exists. The cost we accepted is real — module discipline has to be enforced by review and by structure, not by network boundaries — but it is far cheaper than the alternative at this team size.",
+        "The transactional outbox is what lets the monolith stay decoupled internally without resorting to dual writes. Anything that has to happen synchronously — snapshot pricing, the credit-limit check, the inventory soft-hold, persisting the Order and its FulfillmentGroups in AWAITING_SUPPLIER — happens in one DB transaction. In that same transaction we write an OutboxEvent. A relay then publishes that event to SNS/SQS, and the async work (projecting search, building settlements, sending notifications) happens off the request path in idempotent workers. Because the event and the state change commit atomically, we never have the classic failure where the database succeeds but the message is lost, or vice versa. The request stays fast and the eventually-consistent work stays out of the buyer's way.",
+        "This is why checkout never depends on the read model or a worker. OpenSearch powers search and is kept current through the outbox with per-SKU version guards, but it is never authoritative for money — at checkout we re-price from Postgres and reserve inventory at the database. The architecture's load-bearing rule is simple: Postgres is the source of truth for anything involving stock or money, and everything else is a derived view we are allowed to rebuild."
+      ]
+    },
+    {
+      "kind": "callout",
+      "tone": "insight",
+      "title": "Module boundaries are the whole bet",
+      "body": "A modular monolith only stays maintainable if the modules are actually bounded. We enforced one PostgreSQL schema per context, no cross-schema table reads, and a single explicit interface per module — cross-context interaction goes through that interface or through an outbox event, never a foreign key into someone else's tables. The payoff is that the FulfillmentGroup split, the DB-authoritative inventory reservation, and the append-only Settlement ledger each live behind a boundary we can reason about in isolation, and any context could be extracted into its own service later along a seam that already exists. The risk is that without network walls, discipline is the only thing keeping the seams clean; we treat a cross-boundary table access in review the same way we'd treat a failing test."
+    }
+  ]
+}

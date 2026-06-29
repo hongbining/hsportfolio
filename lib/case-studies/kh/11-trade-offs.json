@@ -1,0 +1,77 @@
+{
+  "id": "trade-offs",
+  "title": "Trade-offs",
+  "summary": "An honest accounting of the load-bearing decisions on KH Wholesale: what each one bought us, what it cost, how we mitigated, and which one I would revisit first as we approach 10x scale.",
+  "blocks": [
+    {
+      "kind": "lead",
+      "text": "Every architectural decision on KH Wholesale bought something and charged for it; this section is the receipt."
+    },
+    {
+      "kind": "prose",
+      "paragraphs": [
+        "I am wary of case studies that present a clean architecture with no scars. The decisions below were the right ones for a 6-person team running a managed marketplace at ~9,000 orders/day and ~38B KRW/month GMV, but each one carried a real cost that we either paid or actively mitigated. None of them were free, and a couple of them have a visible expiry date as we scale.",
+        "The pattern that recurs across all five trade-offs is the same: we consistently chose operational simplicity and transactional correctness over premature distribution, and we paid for that in module discipline, write hotspots, and a handful of places where we accept latency or staleness in exchange for being able to reason about the system. Where we accepted staleness (search), we made sure it could never become authoritative for money. Where we demanded correctness (inventory, settlement), we accepted a throughput ceiling and engineered around the hotspots rather than wishing them away.",
+        "The table is the core of this section. Each row names the choice, what we gained, and what it cost us along with how we mitigated it. The prose and callout that follow are about the future: the points where the chosen path bends under 10x load, and the one decision I would change first."
+      ]
+    },
+    {
+      "kind": "table",
+      "caption": "The five load-bearing trade-offs, with costs and mitigations stated plainly.",
+      "columns": ["Choice", "What we gained", "What it cost / how we mitigated"],
+      "rows": [
+        [
+          "Modular monolith over microservices (one NestJS deployable + a few async workers)",
+          "One deploy, one Postgres, ACID transactions spanning Ordering/Inventory/Settlement in a single tx; no distributed-transaction saga tax; trivial local dev and debugging; an on-call surface a 6-person team can actually hold. Boring tech that scaled comfortably to this size.",
+          "Cost: module discipline is manual — nothing physically stops one context from reaching into another's tables, so we enforce bounded-context boundaries by code review, schema-per-context, and a no-cross-schema-FK rule. Shared deploy means a bad change can take down all three frontends' backend at once, and we cannot scale Settlement independently of Ordering. Mitigated with per-module ownership, contract tests at module seams, and the outbox as the only sanctioned inter-context channel so the seams stay where they should."
+        ],
+        [
+          "DB-authoritative inventory: two-phase soft-hold (Redis TTL) then hard-confirm (Postgres SELECT ... FOR UPDATE + version + CHECK available >= 0)",
+          "Correctness under concurrency: oversell incidents went from ~12/month to 0. Stock is authoritative in one place, the database, so we can always answer 'is this really available' definitively. Soft-holds keep checkout fast without committing stock prematurely.",
+          "Cost: write hotspots on popular SKUs — every confirm on a hot SKU serializes on a single InventoryItem row lock, which is a real throughput ceiling and was the source of our deadlock incident. Mitigated with consistent lock ordering (acquire reservation locks sorted by sku_id) plus bounded retry on deadlock (40P01), a unique partial constraint on active reservations, and a reservation-expiry sweeper. The ceiling is per-row, not global, so it bites only the hottest handful of SKUs — but it does bite."
+        ],
+        [
+          "Eventual-consistency OpenSearch read model for catalog, fed by the outbox with per-SKU version guards",
+          "Catalog search p95 from ~480ms to 110ms (target < 120ms); rich faceted search off a denormalized read model without hammering the transactional store; the write path stays clean.",
+          "Cost: projection lag and out-of-order events mean search can show a stale price for a short window — exactly the STALE PRICES incident. Mitigated two ways: a monotonic version per SKU in the projection so stale/out-of-order events are dropped, and the hard rule that search is never authoritative for money — checkout always re-prices from Postgres (ContractPrice/PriceList) and re-validates at supplier confirm. Customers may see a stale number while browsing; they never get charged one."
+        ],
+        [
+          "Transactional outbox + idempotent SQS consumers over CDC (Debezium-style log tailing)",
+          "No dual-write inconsistency: the OutboxEvent row is written in the same DB transaction as the state change, so an event exists if and only if the business fact committed. Simple mental model, no separate CDC pipeline to operate, replayable from a table.",
+          "Cost: the application must explicitly publish (write the outbox row) — it is not free CDC magic — and we carry an extra table plus a relay worker draining it to SNS/SQS. At-least-once delivery pushes idempotency onto every consumer. Mitigated with idempotent handlers keyed by dedup id / (event_type, external_id), a processed-events table, and DLQs with alarms. We accepted the extra table and publish discipline as the price of never debugging a dual-write split-brain."
+        ],
+        [
+          "Per-carrier adapters over a single shipping aggregator",
+          "Direct control over each Carrier integration, lower per-shipment cost (no aggregator margin), and the ability to map each carrier's webhook quirks straight into our TrackingEvent / Shipment state machine.",
+          "Cost: linear maintenance — every new carrier is a new adapter, a new webhook contract, and new edge cases (retries, out-of-order tracking, the double-settlement webhook-retry incident). Mitigated by a uniform adapter interface, idempotent webhook ingest keyed by (event_type, external_id), and a shared normalization layer so the rest of Fulfillment is carrier-agnostic. The maintenance cost is real but predictable, and it grows with carrier count, not order volume."
+        ],
+        [
+          "Synchronous credit-limit check at checkout (against the buyer Organization) over an async check",
+          "A buyer who is over their credit terms is stopped at placement, before any FulfillmentGroup, soft-hold, or supplier notification exists — no half-placed orders to unwind, settlement stays clean.",
+          "Cost: added checkout latency, since the credit check sits on the critical path of placing the Order. Mitigated by keeping the check a single indexed read against pre-aggregated buyer exposure and folding it into the same placement transaction; checkout p95 still landed at 240ms (down from 820ms). We judged a few milliseconds of synchronous latency cheaper than the operational mess of reversing an already-placed multi-supplier order."
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "paragraphs": [
+        "Where does this bend at 10x? A few of these rows are explicitly sized for the current scale and would need to change at, say, ~90,000 orders/day and proportionally larger GMV.",
+        "The modular monolith is the first thing people expect to break, but it is not actually where I would start. Because the boundaries are already drawn as bounded-context modules communicating through the outbox, the monolith is a deployment choice, not an architectural one — we can extract a single hot module into its own deployable without redrawing the domain. The honest 10x move there is surgical, not wholesale: pull out the one or two highest-traffic contexts (Catalog read-serving, and eventually Ordering) so they can scale and deploy independently, while the rest of the system stays a monolith. The discipline we paid for up front is exactly what makes that extraction cheap later.",
+        "The genuinely scale-limited decision is DB-authoritative inventory. The per-row write hotspot on popular SKUs has a hard ceiling, and lock ordering plus retry only buys headroom, not a different asymptote. At 10x I would shard inventory — partition InventoryItem by location/DC and shard the hottest SKUs across reservation buckets so contention spreads across many rows instead of one, while keeping the database authoritative. That is a real project, not a config change, and it is the one I expect to be forced into first.",
+        "The outbox relay and the search projection scale more gracefully: both are throughput problems with known levers (more relay/projection workers, partitioned consumers, right-sized visibility timeouts) rather than correctness ceilings. Per-carrier adapters scale with carrier count, not volume, so they are a headcount/maintenance question, not an architecture one. The synchronous credit check stays fine as long as buyer-exposure stays a single indexed read; if that aggregation gets expensive, it moves to a maintained materialized balance rather than going async."
+      ]
+    },
+    {
+      "kind": "callout",
+      "tone": "insight",
+      "title": "The one I'd revisit first",
+      "body": "DB-authoritative inventory with a single-row hard-confirm. It was unambiguously the right call — it took oversell from ~12/month to 0 and it is the kind of correctness you cannot retrofit cheaply. But it is also the only trade-off here with a true throughput ceiling rather than a graceful scaling curve: the hottest SKUs serialize on one Postgres row, and lock ordering plus deadlock retry buy headroom without changing the asymptote. Before the monolith ever needs splitting, I would shard inventory (partition InventoryItem by location and bucket hot-SKU reservations across rows) so we keep DB-authoritative correctness while spreading contention. I would not trade away the strong-consistency model to get there — eventual-consistency inventory is how you get back to overselling — I would just give it more rows to fight over."
+    },
+    {
+      "kind": "prose",
+      "paragraphs": [
+        "The thread tying these together is that we never traded correctness for performance in the places where money or stock is at stake, and we never paid for strong consistency in the places where it did not matter. Search can lag because checkout re-prices; carriers can retry because ingest is idempotent; the monolith can share a deploy because the boundaries are clean enough to split later. The one place we bought correctness at a structural cost — inventory — is the one place I am keeping a close eye on, because that bill comes due with scale rather than with time."
+      ]
+    }
+  ]
+}

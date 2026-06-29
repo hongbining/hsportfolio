@@ -1,0 +1,167 @@
+{
+  "id": "troubleshooting",
+  "title": "Troubleshooting",
+  "summary": "Five production incidents that shaped the system's hardest invariants — overselling, double settlement, stale search prices, multi-line deadlocks, and SQS redelivery side effects — each walked from symptom through diagnosis, root cause, the exact fix, and the prevention it left behind.",
+  "blocks": [
+    {
+      "kind": "lead",
+      "text": "Every durable invariant in KH Wholesale earned its place by failing in production first; these five incidents are the ones that rewrote how I think about concurrency, idempotency, and where the truth is allowed to live."
+    },
+    {
+      "kind": "prose",
+      "paragraphs": [
+        "I am keeping this section deliberately raw. For each incident I give the symptom we actually saw on a dashboard or in a buyer complaint, the diagnosis path we walked, the root cause once we stopped guessing, the fix as it shipped, and the prevention that made the class of bug impossible rather than unlikely. None of these were exotic. They were the boring, high-stakes races and retries that show up the moment a B2B marketplace has real concurrency and real money on the line.",
+        "A theme runs through all five: the bug was never in the happy path. It was in the seam between two statements, two services, or two delivery attempts. Postgres and SQS both gave us exactly the guarantees they promise; we just hadn't asked for them correctly. The fixes are mostly constraints and lock ordering, not clever code — which is the point. Correctness lives in the schema and the state machine, and the application is only allowed to be wrong in ways the database will reject."
+      ]
+    },
+    {
+      "kind": "callout",
+      "tone": "warning",
+      "title": "Incident A — Overselling under concurrency",
+      "body": "Symptom: a hot SKU on promotion went negative. Two buyer orders each reserved 'the last units' within the same second, both succeeded at checkout, and Inventory showed available = -8. Suppliers got FulfillmentGroups they could not fulfill, and ops had to cancel and apologize. We were averaging ~12 oversell incidents/month, concentrated entirely on a handful of popular SKUs during demand spikes."
+    },
+    {
+      "kind": "prose",
+      "paragraphs": [
+        "Diagnosis: we reproduced it with two concurrent confirm transactions against the same InventoryItem and watched both pass the availability check. The confirm path read available, compared it to the requested quantity in application code, and then issued an UPDATE — three separate statements with no lock held across them. Under READ COMMITTED, both transactions read the same available value before either wrote, so both believed there was stock. The Redis soft-hold gave us a TTL'd reservation but it was advisory; it reduced collisions, it did not prevent them, and an expired hold plus a retry reopened the window.",
+        "Root cause: a classic check-then-write race. The authoritative decrement was not serialized at the row that owned the truth. We had pushed correctness up into the application, where two requests could interleave freely. The soft-hold had lulled us into treating Redis as the source of truth for stock when the database was the only thing that could actually arbitrate the last unit.",
+        "Fix: we made the InventoryItem row the serialization point. The confirm transaction now takes SELECT ... FOR UPDATE on the row before reading available, so concurrent confirms queue behind the lock instead of racing. We added a CHECK (available >= 0) so the database physically refuses to go negative even if logic regresses, and a partial unique index that prevents two active (non-expired, non-released) reservations from double-counting the same hold. A background sweeper releases expired StockReservations so soft-holds can't leak capacity. The Redis hold stayed as a fast-path UX signal, but it is no longer authoritative for anything."
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "sql",
+      "caption": "Confirm-and-decrement serialized on the InventoryItem row, with the database as the final arbiter",
+      "code": "-- Schema guards: the DB physically cannot oversell, regardless of app logic.\nALTER TABLE inventory.inventory_item\n  ADD CONSTRAINT inventory_item_available_nonneg CHECK (available >= 0);\n\n-- At most one ACTIVE reservation row per (sku_id, order_line) — no double-holds.\nCREATE UNIQUE INDEX uq_active_reservation\n  ON inventory.stock_reservation (sku_id, order_line_id)\n  WHERE status = 'ACTIVE';\n\n-- Confirm transaction: lock the owning row, then decrement.\nBEGIN;\n\nSELECT available\n  FROM inventory.inventory_item\n WHERE sku_id = $1 AND location_id = $2\n   FOR UPDATE;            -- concurrent confirms queue here instead of racing\n\nUPDATE inventory.inventory_item\n   SET available = available - $3,\n       version   = version + 1\n WHERE sku_id = $1 AND location_id = $2\n   AND available >= $3;   -- belt-and-suspenders; CHECK enforces it too\n\n-- 0 rows updated => insufficient stock => roll back and surface a clean error.\nUPDATE inventory.stock_reservation\n   SET status = 'CONFIRMED', confirmed_at = now()\n WHERE id = $4;\n\nCOMMIT;"
+    },
+    {
+      "kind": "callout",
+      "tone": "insight",
+      "title": "Prevention — reserve inventory at the database, not the app",
+      "body": "Soft-holds in Redis are a latency and UX optimization, never the source of truth. The last unit of a hot SKU must be arbitrated by a single serialized writer: SELECT ... FOR UPDATE on the InventoryItem row plus CHECK (available >= 0) turns overselling from a logic bug into an impossible state. Oversell incidents went from ~12/month to 0 and stayed there through sustained 9,000 orders/day peaks."
+    },
+    {
+      "kind": "callout",
+      "tone": "warning",
+      "title": "Incident B — Double settlement on webhook retry",
+      "body": "Symptom: a supplier's statement showed the same delivered FulfillmentGroup paid out twice. The settlement ledger had two credit entries for one shipment, and the payout was inflated. It surfaced as a settlement dispute, which is the worst place to find a bug — in front of money owed to a partner."
+    },
+    {
+      "kind": "prose",
+      "paragraphs": [
+        "Diagnosis: we traced the duplicated LedgerEntry back to two ShipmentDelivered events. The carrier's webhook had retried — their side timed out waiting for our 200, so they re-sent the same delivery callback. Both deliveries were valid HTTP requests with the same external_id, and our ingest endpoint happily processed each one, ran settlement, and appended ledger entries. There was no dedup anywhere between 'a delivery happened' and 'money moved.'",
+        "Root cause: settlement was not idempotent with respect to its trigger. We had treated the webhook as an at-most-once signal when carriers explicitly deliver at-least-once. Any retry — theirs, or our own SQS redelivery downstream — would re-run a side effect that mutated the ledger. The append-only ledger, which is exactly the right design for auditability, also meant the duplicate was permanent until manually reversed.",
+        "Fix: we made delivery ingestion idempotent at the edge and made double-crediting structurally impossible at the ledger. Incoming events are keyed by (event_type, external_id) and recorded in a processed_events dedup table with a unique constraint, inside the same transaction as the work; a second arrival hits the unique violation and is acknowledged as already-done. As a final backstop, LedgerEntry carries a UNIQUE (fulfillment_group_id, entry_type) so settling the same group twice can never produce two postings of the same kind."
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "sql",
+      "caption": "Dedup at ingest plus a structural ledger uniqueness guard make double settlement impossible",
+      "code": "-- 1) Edge idempotency: one row per logical event, ever.\nCREATE TABLE settlement.processed_event (\n  event_type   text   NOT NULL,\n  external_id  text   NOT NULL,\n  processed_at timestamptz NOT NULL DEFAULT now(),\n  PRIMARY KEY (event_type, external_id)\n);\n\n-- 2) Ledger guard: a given group can be credited for a given type exactly once.\nALTER TABLE settlement.ledger_entry\n  ADD CONSTRAINT uq_ledger_group_type\n  UNIQUE (fulfillment_group_id, entry_type);\n\n-- Settlement worker, all in one transaction:\nBEGIN;\n\nINSERT INTO settlement.processed_event (event_type, external_id)\nVALUES ('ShipmentDelivered', $1)\nON CONFLICT (event_type, external_id) DO NOTHING;\n-- 0 rows inserted => duplicate delivery => COMMIT and ACK without side effects.\n\n-- Only reached on first delivery of this event:\nINSERT INTO settlement.ledger_entry\n  (fulfillment_group_id, entry_type, amount_krw, direction)\nVALUES ($2, 'SUPPLIER_PAYOUT', $3, 'CREDIT');\n-- uq_ledger_group_type is the last line of defense against a double posting.\n\nCOMMIT;"
+    },
+    {
+      "kind": "callout",
+      "tone": "insight",
+      "title": "Prevention — idempotency is a design concern, not a patch",
+      "body": "Any event that moves money must carry a stable idempotency key and pass through a dedup table in the same transaction as its effect, with a UNIQUE constraint at the destination as a structural backstop. Carriers and queues are at-least-once; the only safe assumption is that every delivery event will eventually arrive twice. Settlement disputes dropped roughly 70% after this and the rounding fix landed."
+    },
+    {
+      "kind": "callout",
+      "tone": "warning",
+      "title": "Incident C — Stale prices in catalog search",
+      "body": "Symptom: buyers saw a price in search results that did not match the price at checkout. A supplier had lowered a SKU's PriceList entry; search kept showing the old, higher number for minutes, and occasionally an older event would overwrite a newer one so the wrong price stuck. It read as a trust problem: 'your catalog lies.'"
+    },
+    {
+      "kind": "prose",
+      "paragraphs": [
+        "Diagnosis: the OpenSearch read model is fed asynchronously from the transactional outbox via the search-projection worker. Two things were happening. First, ordinary projection lag — there is always a short window where Postgres is updated and OpenSearch is not. Second, and worse, events were applying out of order: a price update and a subsequent correction could be consumed by parallel workers such that the older document write landed last, leaving stale data that no amount of waiting would fix.",
+        "Root cause: the projection had no notion of event ordering per SKU, so it treated the last writer as the winner regardless of which version that writer carried. Combined with the (entirely expected) lag, this meant search could not be trusted for money. The deeper mistake would have been to try to make search strongly consistent; that fights the whole reason we have a separate read model.",
+        "Fix: two layers. In the projection, every SKU document carries a monotonic version, and the worker drops any event whose version is not strictly greater than what is already indexed — out-of-order and duplicate events become no-ops. That fixes correctness within search. The non-negotiable layer is that checkout always re-prices from Postgres using ContractPrice/PriceList and snapshots that price onto OrderLine; search is a discovery surface and is never authoritative for what a buyer pays."
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "typescript",
+      "caption": "Per-SKU monotonic version drops stale events; checkout re-prices from the database of record",
+      "code": "// Search-projection worker: only newer versions win.\nasync function projectSku(evt: SkuUpdatedEvent): Promise<void> {\n  await openSearch.update({\n    index: 'sku',\n    id: evt.skuId,\n    body: {\n      // Conditional script: ignore anything not strictly newer.\n      script: {\n        source:\n          'if (ctx._source.version == null || params.v > ctx._source.version) ' +\n          '{ ctx._source = params.doc } else { ctx.op = \"none\"; }',\n        params: { v: evt.version, doc: evt.doc },\n      },\n      upsert: { ...evt.doc, version: evt.version },\n    },\n  });\n}\n\n// Checkout: search is never authoritative for money. Re-price from Postgres.\nasync function priceCartItem(item: CartItem, buyerOrgId: string) {\n  const price = await pricing.resolvePrice({\n    skuId: item.skuId,\n    buyerOrgId,            // ContractPrice first, then PriceList fallback\n    asOf: new Date(),\n  });\n  // Snapshotted onto OrderLine at placement — immutable thereafter.\n  return { skuId: item.skuId, unitPriceKrw: price.unitPriceKrw };\n}"
+    },
+    {
+      "kind": "callout",
+      "tone": "insight",
+      "title": "Prevention — a read model may be stale, but it must never be authoritative for money",
+      "body": "Eventual consistency is fine for discovery and unacceptable for billing. A monotonic per-entity version makes the projection robust to lag, duplicates, and reordering; re-pricing from Postgres at checkout makes the consequence of any residual staleness zero. Catalog search p95 came down from ~480ms to 110ms precisely because we let search be fast-and-eventual instead of trying to make it correct-for-money."
+    },
+    {
+      "kind": "callout",
+      "tone": "warning",
+      "title": "Incident D — Deadlocks on multi-line orders",
+      "body": "Symptom: under load, multi-line orders started failing with Postgres error 40P01 (deadlock detected). Two large orders that shared several SKUs would each grab one row the other needed, and Postgres killed one of them. The buyer saw a placement failure that succeeded on retry — order-placement error rate climbed to 2.3% during peaks."
+    },
+    {
+      "kind": "prose",
+      "paragraphs": [
+        "Diagnosis: we pulled the deadlock reports from the logs and looked at the lock graphs. Two confirm transactions were taking FOR UPDATE locks on InventoryItem rows in whatever order the cart happened to list them. Order 1 locked SKU 100 then waited on SKU 250; Order 2 had locked SKU 250 then waited on SKU 100. Classic cyclic wait. Nothing was wrong with any single transaction — the problem only existed when two of them disagreed about lock order.",
+        "Root cause: inconsistent lock acquisition order across transactions that touch overlapping row sets. The fix from Incident A (FOR UPDATE) was correct and necessary; it just exposed that we had no discipline about the sequence in which a single order grabbed its many row locks. With shared hot SKUs, overlap was common enough to make cycles routine at peak.",
+        "Fix: we impose a total order on lock acquisition. Before confirming, the order's lines are sorted by sku_id and locks are taken in that order, every time, by every transaction — which makes a cyclic wait impossible because no two transactions can hold-and-wait in opposite directions. On top of that we added a bounded retry specifically on 40P01 with a little jitter, so the rare deadlock that still slips through (or any other transient serialization failure) is transparently retried instead of surfaced to the buyer."
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "typescript",
+      "caption": "Consistent sku_id lock ordering eliminates cycles; bounded retry absorbs the rare 40P01",
+      "code": "// 1) Always acquire locks in the SAME global order: sorted by sku_id.\nasync function confirmReservations(tx: Tx, lines: OrderLine[]) {\n  const ordered = [...lines].sort((a, b) => (a.skuId < b.skuId ? -1 : 1));\n  for (const line of ordered) {\n    await tx.query(\n      `SELECT available FROM inventory.inventory_item\n        WHERE sku_id = $1 AND location_id = $2 FOR UPDATE`,\n      [line.skuId, line.locationId],\n    );\n    await decrementAndConfirm(tx, line);\n  }\n}\n\n// 2) Bounded retry on deadlock (40P01) and serialization failures (40001).\nasync function withDeadlockRetry<T>(fn: () => Promise<T>, max = 4): Promise<T> {\n  for (let attempt = 1; ; attempt++) {\n    try {\n      return await fn();\n    } catch (e: any) {\n      if ((e.code === '40P01' || e.code === '40001') && attempt < max) {\n        await sleep(20 * attempt + Math.random() * 20); // jittered backoff\n        continue;\n      }\n      throw e;\n    }\n  }\n}"
+    },
+    {
+      "kind": "callout",
+      "tone": "insight",
+      "title": "Prevention — consistent lock ordering turns deadlocks into a non-event",
+      "body": "When many transactions lock overlapping row sets, the cheapest correctness tool is a total order on acquisition — sort by sku_id and lock in that order, always. Cycles become structurally impossible; the bounded 40P01 retry is just insurance for the residue. Order-placement error rate fell from 2.3% to 0.1% once lock ordering and the inventory fixes were both in."
+    },
+    {
+      "kind": "callout",
+      "tone": "warning",
+      "title": "Incident E — SQS redelivery side effects",
+      "body": "Symptom: buyers and suppliers received duplicate notifications — two 'order placed' emails, two SMS — and some downstream effects fired twice. The notifications worker was processing the same SQS message more than once whenever a handler ran slightly long, and a few poison messages quietly retried forever, burying real work."
+    },
+    {
+      "kind": "prose",
+      "paragraphs": [
+        "Diagnosis: we correlated the duplicate sends against SQS metrics and saw messages being redelivered after the visibility timeout expired. The handler occasionally took longer than the timeout (a slow downstream call), SQS assumed it had failed, and handed the same message to another consumer. At-least-once delivery was working exactly as documented; our handlers just weren't idempotent, so a second delivery meant a second side effect. Separately, a handful of malformed messages had no exit — they failed, returned to the queue, and looped.",
+        "Root cause: handlers treated SQS as exactly-once and had no dedup, no right-sized visibility timeout, and nowhere for permanently-failing messages to go. Three independent gaps that combined into duplicate effects plus retry storms.",
+        "Fix: we made every consumer idempotent, keyed on the message's stable dedup id, recording handled ids before performing the side effect so a redelivery becomes a no-op. We right-sized the visibility timeout to comfortably exceed the worst-case handler runtime (and extend the heartbeat for genuinely long work). And we attached a dead-letter queue with a low maxReceiveCount so poison messages are parked after a few attempts instead of looping, with a CloudWatch alarm on DLQ depth so a human is paged the moment anything lands there."
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "typescript",
+      "caption": "Idempotent SQS handler keyed by dedup id, with DLQ and right-sized visibility timeout",
+      "code": "// Handler is idempotent: record the dedup id before the side effect.\nasync function handleMessage(msg: SqsMessage): Promise<void> {\n  const dedupId = msg.attributes.MessageDeduplicationId ?? msg.messageId;\n\n  const firstTime = await db.tx(async (tx) => {\n    const res = await tx.query(\n      `INSERT INTO notifications.processed_message (dedup_id)\n         VALUES ($1) ON CONFLICT (dedup_id) DO NOTHING\n       RETURNING dedup_id`,\n      [dedupId],\n    );\n    return res.rowCount === 1; // false => already handled => skip side effect\n  });\n\n  if (!firstTime) return;       // safe no-op on redelivery\n  await sendNotification(msg.body);\n}\n\n// Queue config: visibility timeout > worst-case handler runtime; DLQ on poison.\nconst queue = new Queue(stack, 'NotificationsQueue', {\n  visibilityTimeout: Duration.seconds(120), // > p99 handler time, with margin\n  deadLetterQueue: {\n    queue: dlq,\n    maxReceiveCount: 5,         // park after 5 failed attempts, don't loop\n  },\n});\n// CloudWatch alarm on ApproximateNumberOfMessagesVisible(dlq) > 0 -> page on-call.\n"
+    },
+    {
+      "kind": "callout",
+      "tone": "insight",
+      "title": "Prevention — at-least-once means handlers must be idempotent, and poison messages need an exit",
+      "body": "SQS guarantees at-least-once, never exactly-once. The three-part fix is non-negotiable for any consumer with side effects: a dedup key recorded before the effect, a visibility timeout sized above worst-case handler runtime, and a dead-letter queue with an alarm so poison messages page a human instead of looping forever. On-call pages roughly halved once redelivery stopped generating phantom work."
+    },
+    {
+      "kind": "table",
+      "caption": "Incident scorecard — root cause and the invariant each one left behind",
+      "columns": ["Incident", "Root cause", "Fix that shipped", "Result"],
+      "rows": [
+        ["A — Overselling", "Check-then-write race across separate statements", "SELECT ... FOR UPDATE on InventoryItem, partial unique index on active reservations, CHECK (available >= 0), expiry sweep", "~12/month -> 0 oversells"],
+        ["B — Double settlement", "Webhook retry re-ran a non-idempotent side effect", "Idempotency key on (event_type, external_id), processed_event dedup table, UNIQUE (group, type) on LedgerEntry", "Settlement disputes down ~70%"],
+        ["C — Stale search prices", "Projection lag plus out-of-order events; search treated as authoritative", "Monotonic per-SKU version drops stale events; checkout always re-prices from Postgres", "Search p95 480ms -> 110ms"],
+        ["D — Deadlocks", "Inconsistent lock acquisition order on overlapping SKUs", "Lock by sorted sku_id (consistent ordering) plus bounded retry on 40P01", "Placement errors 2.3% -> 0.1%"],
+        ["E — SQS redelivery", "At-least-once delivery with non-idempotent handlers", "Idempotent handlers keyed by dedup id, right-sized visibility timeout, DLQ with alarm", "On-call pages roughly halved"]
+      ]
+    },
+    {
+      "kind": "prose",
+      "paragraphs": [
+        "The through-line across all five is that we stopped trying to be correct in application code and instead made incorrectness rejectable by the database or impossible by construction. A CHECK constraint, a partial unique index, a UNIQUE on the ledger, a monotonic version, a deterministic lock order, a dedup row before a side effect — none of these are clever, and that is their value. They convert 'we're careful' into 'the system cannot do the wrong thing,' which is the only kind of guarantee that survives a 9,000-orders-per-day peak and six engineers who can't all hold every race condition in their heads.",
+        "Every one of these incidents is now a test and a constraint, so the class of bug stays dead. That is the real payoff: the dashboards improved once, and they stayed improved, because the fix lives in the schema rather than in anyone's discipline."
+      ]
+    }
+  ]
+}

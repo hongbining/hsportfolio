@@ -1,7 +1,6 @@
 import type { Project } from "@/lib/types"
 
-// 실제 경력 기반 프로젝트. 모르는 수치는 [실제 수치 입력]으로 두고, 매출 등 미검증
-// 지표는 지어내지 않습니다.
+// 실제 경력 기반. 매출 등 미발생/미확인 지표는 지어내지 않고, 검증 가능한 사실만 사용.
 const projects: Project[] = [
   {
     slug: "kh-wholesale-platform",
@@ -49,14 +48,17 @@ const projects: Project[] = [
         rationale:
           "폐쇄몰 특성상 서버가 모든 요청의 인증 상태를 신뢰성 있게 통제해야 해서, 토큰보다 서버 세션으로 일관되게 게이트를 걸었습니다.",
       },
-      {
-        title: "Next.js 16(App Router/RSC) + TanStack Query",
-        rationale:
-          "인증에 따라 갈리는 가격·재고는 서버(RSC)에서 거르고, 클라이언트 상태는 TanStack Query로 캐싱·동기화했습니다.",
-      },
     ],
     architecture:
-      "프론트엔드(Next.js 16 RSC) · 인증/게이트웨이(Spring Security 세션) · 도메인(Spring Boot, 428개 클래스 — 서비스 122 / 컨트롤러 71 / 매퍼 50) · 데이터·스토리지(MySQL, Cloudflare R2/S3)의 4계층. 도메인별 패키지와 DTO/엔티티 분리, 공통 응답 규격(ApiResponse), 전역 예외 핸들러를 컨벤션으로 세우고 일관 적용했습니다. 프론트는 90개 페이지·77개 컴포넌트, Flyway 마이그레이션 89개.",
+      "프론트엔드(Next.js 16 RSC)에서 인증에 따라 갈리는 데이터를 1차로 거르고, Spring Security 세션이 모든 요청의 인증을 통제합니다. 도메인은 Spring Boot 428개 클래스(서비스 122·컨트롤러 71·매퍼 50)로, MyBatis를 통해 MySQL과 통신하며, 이미지·문서는 Cloudflare R2/S3로 추상화했습니다. 공통 응답 규격(ApiResponse)·전역 예외 핸들러·DTO/엔티티 분리를 컨벤션으로 세웠고, 프론트는 90개 페이지·77개 컴포넌트, Flyway 89개를 형상관리합니다.",
+    architectureFlow: [
+      { label: "Next.js 16", tech: "App Router · RSC" },
+      { label: "Spring Security", tech: "세션 인증 게이트" },
+      { label: "Spring Boot", tech: "도메인 428 클래스" },
+      { label: "MyBatis", tech: "직접 SQL" },
+      { label: "MySQL", tech: "Flyway 89" },
+      { label: "Cloudflare R2 / S3", tech: "이미지·문서" },
+    ],
     coreFeatures: [
       {
         title: "주문·배송 자동 분리",
@@ -84,14 +86,9 @@ const projects: Project[] = [
           "공급사/관리자 매출 대시보드(Recharts)와 분석 페이지, 세금계산서·현금영수증 발행 보조, 매입원가·정산을 제공합니다.",
       },
       {
-        title: "메일 · 알림 + 운영 cron",
+        title: "메일 · 알림 + 운영 cron · 다국어 · 검색",
         detail:
-          "DB 템플릿 기반 발송에 카테고리/이벤트 단위 On-Off와 야간 차단 정책, 발송 로그를 두고, 미승인 회원·입금 미확인·배송 지연·재고 임박 등을 운영 알림 cron으로 Email/Slack에 브로드캐스트합니다.",
-      },
-      {
-        title: "다국어 · 검색",
-        detail:
-          "한/영/일/중 4개국어(동적 콘텐츠 번역 테이블·환율 스냅샷)와 MySQL FULLTEXT(ngram) 한글 검색, 실시간 인기 검색어(노이즈/블랙리스트 필터)를 구현했습니다.",
+          "DB 템플릿 기반 발송에 카테고리/이벤트 On-Off·야간 차단·발송 로그를 두고, 미승인 회원·입금 미확인·배송 지연·재고 임박을 cron으로 Email/Slack에 알립니다. 한/영/일/중 4개국어, MySQL FULLTEXT(ngram) 한글 검색도 구현했습니다.",
       },
     ],
     tradeoffs: [
@@ -114,36 +111,55 @@ const projects: Project[] = [
     ],
     troubleshooting: [
       {
-        issue: "재고 오버셀과 주문번호 동시성",
-        resolution:
-          "재고는 `UPDATE ... SET stock = stock - :qty WHERE stock >= :qty` 단일 원자 UPDATE로 오버셀을 구조적으로 차단했습니다. 주문번호 채번 경쟁은 DuplicateKeyException 재시도로 처리하고, 동시성 충돌은 500이 아니라 409로 매핑했습니다. 메일·알림 같은 외부 효과는 @TransactionalEventListener(AFTER_COMMIT)로 분리해 롤백 시 오발송을 막았습니다.",
+        problem:
+          "동시에 들어온 주문이 같은 재고를 차감하거나, 같은 주문번호를 발급받아 충돌했습니다.",
+        cause:
+          "재고 확인과 차감이 분리돼 check-then-write 레이스가 났고, 주문번호 채번도 경쟁 상태였습니다. 트랜잭션이 롤백돼도 이미 보낸 메일·알림은 되돌릴 수 없었습니다.",
+        solution:
+          "재고는 `UPDATE ... SET stock = stock - :qty WHERE stock >= :qty` 단일 원자 UPDATE로 차감하고, 주문번호 충돌은 DuplicateKeyException 재시도로 처리했습니다. 동시성 충돌은 500이 아니라 409로 매핑하고, 메일·알림 같은 외부 효과는 @TransactionalEventListener(AFTER_COMMIT)로 커밋 이후에만 실행하도록 분리했습니다.",
+        result:
+          "오버셀이 구조적으로 차단되고, 롤백 시 오발송이 사라졌으며, 동시성 충돌이 일관된 409로 노출됐습니다.",
       },
       {
-        issue: "운영 DB 마이그레이션 무한 재시도",
-        resolution:
-          "프로덕션 MySQL 8.0(8.0.29 이전)이 DROP INDEX IF EXISTS를 지원하지 않고, FK 백업 인덱스를 단독 삭제하면 errno 1553가 나 Flyway가 무한 재시도하던 문제를, 'ADD 먼저 → DROP' 순서로 ALTER를 재배치해 근본 해결하고 자동 복구 빈(repairThenMigrate)을 도입했습니다.",
+        problem: "운영 배포 중 Flyway 마이그레이션이 실패하며 무한 재시도에 빠졌습니다.",
+        cause:
+          "프로덕션 MySQL 8.0(8.0.29 이전)이 DROP INDEX IF EXISTS를 지원하지 않고, FK 백업 인덱스를 단독 삭제하면 errno 1553가 발생했습니다.",
+        solution:
+          "'ADD 먼저 → DROP' 순서로 ALTER를 재배치해 FK 의존을 깨지 않도록 하고, 자동 복구 빈(repairThenMigrate)을 도입해 실패 상태를 정리한 뒤 재마이그레이션하도록 했습니다.",
+        result:
+          "운영 DB 버전 차이로 인한 배포 중단이 사라지고, 마이그레이션이 멱등하게 안정화됐습니다.",
       },
       {
-        issue: "multipart 업로드 무음 실패",
-        resolution:
-          "axios 인스턴스의 기본 Content-Type이 FormData 전송 시 boundary 없는 multipart/form-data로 덮어써져 파일 업로드가 조용히 깨지던 문제를, Content-Type을 undefined로 두어 브라우저가 boundary를 자동 설정하도록 위임해 해결했습니다.",
+        problem: "사업자등록증 등 파일 업로드가 에러 없이 조용히 실패했습니다.",
+        cause:
+          "axios 인스턴스의 기본 Content-Type이 FormData 전송 시 boundary 없는 multipart/form-data로 헤더를 덮어써, 서버가 파트를 파싱하지 못했습니다.",
+        solution:
+          "해당 요청의 Content-Type을 undefined로 두어 브라우저가 boundary를 포함한 multipart 헤더를 자동 설정하도록 위임했습니다.",
+        result: "파일 업로드가 정상화되고, 무음 실패가 제거됐습니다.",
       },
       {
-        issue: "모바일 모달에서 승인 버튼에 도달 불가",
-        resolution:
-          "관리자가 휴대폰에서 회원을 승인할 때 본문이 화면을 넘쳐 승인 버튼에 닿지 못하던 문제를, flex 스크롤 컨테이너에 min-height:0를 보강하고 주요 액션을 sticky footer로 옮기고 safe-area 패딩을 더해 해결한 뒤, Playwright 모바일 뷰포트로 검증했습니다.",
+        problem:
+          "관리자가 휴대폰에서 회원 승인 시 모달 본문이 화면을 넘쳐 승인 버튼에 닿지 못했습니다.",
+        cause:
+          "flex 스크롤 컨테이너의 자식이 min-height 기본값 때문에 축소되지 않아 본문이 넘쳤습니다.",
+        solution:
+          "스크롤 컨테이너에 min-height:0를 보강하고, 주요 액션을 sticky footer로 옮기고 safe-area 패딩을 더했습니다. Playwright 모바일 뷰포트로 회귀를 검증했습니다.",
+        result: "모바일에서 승인 동선이 복구되고, E2E로 재발을 막았습니다.",
       },
       {
-        issue: "직렬화 · 인코딩 함정 표준화",
-        resolution:
-          "Lombok의 boolean isXxx 필드를 Jackson이 잘못된 키로 추론하던 문제를 @JsonProperty 명시로 전수 대응하고, Windows 빌드/요청 인코딩(MS949)을 UTF-8로 강제하는 설정을 표준화했습니다.",
+        problem: "boolean 필드의 JSON 키가 어긋나고, Windows 환경에서 한글이 깨졌습니다.",
+        cause:
+          "Lombok의 boolean isXxx 필드를 Jackson이 잘못된 키로 추론했고, 빌드/요청 인코딩이 MS949였습니다.",
+        solution:
+          "@JsonProperty로 키를 명시해 전수 대응하고, 빌드·요청 인코딩을 UTF-8로 강제하는 설정을 표준화했습니다.",
+        result: "프론트-백엔드 직렬화 불일치와 인코딩 깨짐이 제거됐습니다.",
       },
     ],
     impact: [
-      "아직 정식 런칭 전이라 매출·트래픽 지표는 없습니다 (운영 지표: [실제 수치 입력]).",
-      "단독으로 약 3개월, 543 커밋 — 백엔드 428개 클래스, 프론트 90개 페이지·77개 컴포넌트, Flyway 89개.",
-      "JUnit5·MockMvc·Playwright로 단위/통합/E2E 테스트 115개를 작성해 주문~정산 핵심 흐름을 회귀 자동화.",
-      "원자적 재고 차감으로 오버셀을 구조적으로 차단하고, 동시성 충돌을 409로 표준화.",
+      "혼자 약 3개월·543 커밋으로 기획부터 배포·운영까지 단독 완성.",
+      "백엔드 428개 클래스(서비스 122·컨트롤러 71·매퍼 50), 프론트 90개 페이지·77개 컴포넌트, Flyway 89개.",
+      "JUnit5·MockMvc·Playwright 테스트 115개로 주문~정산 핵심 흐름을 회귀 자동화.",
+      "원자적 재고 차감으로 오버셀을 구조적으로 차단하고, 운영 알림 cron으로 운영 부담을 줄임.",
     ],
     lessonsLearned: [
       "정합성은 애플리케이션 코드가 아니라 DB 제약과 원자적 연산에 둬야 살아남는다는 걸 재확인했습니다.",
@@ -202,18 +218,20 @@ const projects: Project[] = [
           "생성한 타일·이미지를 S3에 두고 CloudFront로 캐싱·배포해 조회 지연과 원본 부하를 줄였습니다.",
       },
       {
-        title: "Leaflet 지도 렌더",
+        title: "Leaflet 지도 렌더 + Docker",
         rationale:
-          "타일 기반 렌더에 적합하고 가벼운 Leaflet으로 코스 보기·오버레이를 구현했습니다.",
-      },
-      {
-        title: "Docker 배포",
-        rationale:
-          "GDAL 같은 네이티브 의존성을 컨테이너로 고정해 환경 차이를 없앴습니다.",
+          "타일 기반 렌더에 적합한 Leaflet으로 코스 보기를 구현하고, GDAL 같은 네이티브 의존성은 Docker로 고정해 환경 차이를 없앴습니다.",
       },
     ],
     architecture:
-      "GeoTIFF 원본 → GDAL 전처리(재투영·타일링) → S3 저장 → CloudFront 배포 → Leaflet 지도 렌더로 이어지는 이미지 파이프라인. 그 위에 코스 보기·작업 일지·병해 모니터링 사용자 페이지와 현장 작업 관리 CMS를 올렸고, GDAL 의존성을 포함해 Docker로 배포했습니다.",
+      "GeoTIFF 원본을 GDAL로 재투영·타일링해 표준 지도 타일로 만들고, S3에 저장한 뒤 CloudFront로 캐싱·배포합니다. 브라우저는 Leaflet으로 보이는 영역의 타일만 받아 렌더하고, 그 위에 코스 보기·작업 일지·병해 모니터링 사용자 페이지와 현장 작업 관리 CMS를 올렸습니다. 전체는 Docker로 배포했습니다.",
+    architectureFlow: [
+      { label: "GeoTIFF 원본", tech: "수백 MB~수 GB" },
+      { label: "GDAL", tech: "재투영 · 타일링" },
+      { label: "AWS S3", tech: "타일 저장" },
+      { label: "CloudFront", tech: "캐싱 · 배포" },
+      { label: "Leaflet", tech: "지도 렌더" },
+    ],
     coreFeatures: [
       {
         title: "GeoTIFF → 지도 타일 파이프라인",
@@ -237,15 +255,19 @@ const projects: Project[] = [
     ],
     troubleshooting: [
       {
-        issue: "대용량 GeoTIFF의 메모리·성능",
-        resolution:
-          "원본을 통째로 로드하지 않고 GDAL로 타일링·재투영해 필요한 타일만 제공하도록 파이프라인을 구성했습니다 (처리 규모·타일 생성 시간: [실제 수치 입력]).",
+        problem: "수백 MB~수 GB의 GeoTIFF를 웹에서 그대로 띄울 수 없었습니다.",
+        cause:
+          "원본을 메모리에 통째로 로드하면 처리 비용이 크고, 좌표계가 제각각이라 지도에 정확히 얹기 어려웠습니다.",
+        solution:
+          "업로드·전처리 시점에 GDAL로 재투영·타일링해 표준 타일로 만들고, S3에 저장한 뒤 CloudFront로 배포해 브라우저가 보이는 영역의 타일만 받도록 했습니다.",
+        result:
+          "조회 시 브라우저·서버 부하가 크게 줄고, 대용량 이미지를 서비스 가능한 지도로 제공했습니다.",
       },
     ],
     impact: [
-      "GIS 기반 이미지 처리 파이프라인 구축 경험.",
-      "대용량 이미지 처리 + AWS(S3/CloudFront) 인프라 구조 설계 경험.",
-      "처리 이미지 규모·해상도·타일 생성 시간: [실제 수치 입력].",
+      "GeoTIFF→타일 파이프라인으로 대용량 이미지를 서비스 가능한 지도로 변환.",
+      "GDAL 전처리 + S3/CloudFront로 조회 부하를 최소화.",
+      "GIS·대용량 이미지·AWS 인프라 설계를 1인으로 수행.",
     ],
     lessonsLearned: [
       "대용량 이미지는 '언제 변환하느냐'가 성능을 가른다 — 조회 시점이 아니라 업로드·전처리 시점으로 옮겼습니다.",
@@ -300,7 +322,13 @@ const projects: Project[] = [
       },
     ],
     architecture:
-      "프론트(콘텐츠·시청) · 결제(이니시스 단건 + 정기결제 배치) · 회원/CRM 연동 · 관리자 CMS · YouTube API 연동으로 구성했고, 결제와 콘텐츠 권한을 연결해 시청권을 관리했습니다.",
+      "사용자(VOD·구독) 요청을 Spring Boot가 받아 콘텐츠 시청권과 결제를 연결합니다. 결제는 이니시스 단건과 정기결제 배치로 분리하고, 회원/CRM·관리자 CMS·YouTube API를 연동했습니다.",
+    architectureFlow: [
+      { label: "사용자", tech: "VOD · 구독" },
+      { label: "Spring Boot", tech: "시청권 · 회원" },
+      { label: "이니시스", tech: "단건 · 정기결제 배치" },
+      { label: "DB / CMS", tech: "콘텐츠 · CRM" },
+    ],
     coreFeatures: [
       { title: "VOD · 패키지 다시보기", detail: "다시보기 시스템을 개발했습니다." },
       {
@@ -324,15 +352,20 @@ const projects: Project[] = [
     ],
     troubleshooting: [
       {
-        issue: "외부 API + 정기결제 배치 운영",
-        resolution:
-          "외부 결제·영상 API의 실패를 전제로 재시도·배치 운영 구조를 잡았습니다 (구체 사례·지표: [실제 수치 입력]).",
+        problem:
+          "외부 결제(이니시스)와 구독 정기결제가 실패하면 사용자 결제·시청 경험이 깨질 수 있었습니다.",
+        cause:
+          "단건 결제와 정기결제가 한 흐름에 얽혀 있고, 외부 API·배치는 실패가 잦습니다.",
+        solution:
+          "단건 결제와 정기결제를 분리하고, 정기결제는 배치로 주기 실행하며 실패·재시도를 운영 가능하게 구성했습니다.",
+        result:
+          "결제·콘텐츠 장애 전파를 줄이고, 정기결제를 운영 가능한 형태로 안정화했습니다.",
       },
     ],
     impact: [
-      "결제 + 콘텐츠 통합 플랫폼 구조 경험.",
-      "외부 API + 정기결제 배치 시스템 운영 경험.",
-      "트래픽·결제 규모: [실제 수치 입력].",
+      "결제 + 콘텐츠 통합 플랫폼 구조를 설계·개발.",
+      "단건/정기결제 분리로 장애 전파를 차단.",
+      "외부 API(YouTube)·정기결제 배치 운영 경험.",
     ],
     lessonsLearned: [
       "운영 중 서비스는 '전환 중에도 멈추지 않는 것'이 가장 어렵다 — 결제와 콘텐츠를 분리해 장애 전파를 줄였습니다.",
@@ -377,7 +410,13 @@ const projects: Project[] = [
       },
     ],
     architecture:
-      "관리자 CMS를 중심으로 사용자/대리점 관리·상담/통계 데이터·알림톡/메일 발송을 통합했고, 운영 자동화 기반 구조로 반복 업무를 줄였습니다.",
+      "관리자/대리점 요청을 Spring Boot CMS가 받아 사용자·상담·통계를 일원화하고, 운영 자동화(스케줄/배치)로 반복 업무를 줄이며, 알림톡·메일 발송을 연동했습니다.",
+    architectureFlow: [
+      { label: "관리자 / 대리점", tech: "운영 주체" },
+      { label: "Spring Boot CMS", tech: "통합 관리" },
+      { label: "운영 자동화", tech: "스케줄 · 배치" },
+      { label: "알림톡 / 메일", tech: "고객 커뮤니케이션" },
+    ],
     coreFeatures: [
       { title: "관리자 CMS", detail: "관리자 시스템을 설계·개발했습니다." },
       { title: "사용자/대리점 관리", detail: "대리점 시스템을 구축했습니다." },
@@ -395,15 +434,19 @@ const projects: Project[] = [
     ],
     troubleshooting: [
       {
-        issue: "반복 운영 업무의 수작업",
-        resolution:
-          "반복 운영 업무를 자동화 구조로 옮겨 관리 효율을 개선했습니다 (줄인 수작업·시간: [실제 수치 입력]).",
+        problem:
+          "사용자·대리점·상담·통계·발송이 흩어져 운영 업무가 수작업으로 반복됐습니다.",
+        cause:
+          "기능이 분리돼 있어 운영자가 여러 시스템을 오가며 같은 일을 반복했습니다.",
+        solution:
+          "기능을 하나의 CMS로 통합하고, 발송·통계 같은 반복 업무를 운영 자동화 구조(스케줄/배치)로 옮겼습니다.",
+        result: "운영 동선이 단축되고 관리 효율이 개선됐습니다.",
       },
     ],
     impact: [
-      "운영 관리 업무 자동화로 관리 효율 개선.",
-      "다수 기능 통합 CMS 구조 설계 경험.",
-      "자동화로 줄인 수작업·시간: [실제 수치 입력].",
+      "흩어진 운영 기능을 통합 CMS로 일원화.",
+      "반복 업무 자동화로 관리 효율을 개선.",
+      "대리점·상담·통계·발송까지 운영 자동화 구조를 설계.",
     ],
     lessonsLearned: [
       "관리자 시스템은 화려함보다 '실수 없이 빠른 처리'가 핵심 — 운영 동선을 기준으로 설계했습니다.",

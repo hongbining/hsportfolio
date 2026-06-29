@@ -33,7 +33,10 @@ export interface ExperienceItem {
   role: string
   company: string
   period: string
+  /** One-line summary of the role. */
   description: string
+  /** 담당 업무 · 성장한 부분 (timeline bullets). */
+  highlights: string[]
 }
 
 export type ProjectLinkType = "live" | "source" | "case-study"
@@ -56,16 +59,23 @@ export interface TradeOff {
   cost: string
 }
 
+/** Problem → Cause → Solution → Result (the section interviewers read longest). */
 export interface TroubleshootingItem {
-  /** The symptom observed in production. */
-  issue: string
-  /** How it was diagnosed and fixed. */
-  resolution: string
+  problem: string
+  cause: string
+  solution: string
+  result: string
 }
 
 export interface CoreFeature {
   title: string
   detail: string
+}
+
+/** One node in a visual architecture pipeline (e.g. Spring Boot → GDAL → S3). */
+export interface ArchitectureNode {
+  label: string
+  tech?: string
 }
 
 /**
@@ -99,13 +109,15 @@ export interface Project {
   decisions: TechnicalDecision[]
   /** 설계 — a short architecture overview. */
   architecture: string
+  /** 설계 — visual architecture pipeline. */
+  architectureFlow: ArchitectureNode[]
   /** 구현 — core features built. */
   coreFeatures: CoreFeature[]
   /** 트레이드오프 — choices and the costs accepted in exchange. */
   tradeoffs: TradeOff[]
   /** 트러블슈팅 — real production issues and how they were resolved. */
   troubleshooting: TroubleshootingItem[]
-  /** 결과 — outcomes (verifiable artefacts or [실제 수치 입력]). */
+  /** 결과 — outcomes (검증 가능한 사실만). */
   impact: string[]
   /** 회고 — what you'd carry into the next system. */
   lessonsLearned: string[]

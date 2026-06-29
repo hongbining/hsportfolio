@@ -7,8 +7,8 @@ import type {
   SocialLink,
 } from "@/lib/types"
 
-// 배포 도메인이 정해지면 url을 교체하세요. (전화번호·주소 등 개인정보는 노출하지 않습니다.)
-const url = "https://your-domain.com" // TODO: 포트폴리오 배포 도메인
+// (전화번호·주소 등 개인정보는 노출하지 않습니다.)
+const url = "https://hsportfolio-henna.vercel.app"
 const email = "gilhongsuk@gmail.com"
 
 const nav: NavItem[] = [
@@ -81,21 +81,48 @@ const principles: Principle[] = [
 
 const skills: SkillGroup[] = [
   {
-    category: "백엔드",
-    items: ["Java", "Spring Boot", "Spring Security", "MyBatis", "JPA", "MySQL"],
+    category: "Backend",
+    items: ["Java", "Spring Boot", "Spring MVC", "Spring Security", "MyBatis", "JPA"],
   },
   {
-    category: "프론트엔드",
+    category: "Frontend",
     items: ["Next.js", "React", "TypeScript", "Tailwind CSS", "JSP", "jQuery"],
   },
   {
-    category: "인프라 · DevOps",
-    items: ["Docker", "AWS", "GitLab CI/CD", "Cloudflare R2", "S3", "CloudFront"],
+    category: "Database",
+    items: ["MySQL", "Oracle", "MS SQL Server"],
   },
   {
-    category: "특화",
-    items: ["GIS (GDAL/GeoTIFF/Leaflet)", "대용량 이미지", "B2B Commerce", "Enterprise CMS"],
+    category: "Infrastructure",
+    items: ["AWS (EC2 · S3 · CloudFront)", "Cloudflare R2", "Nginx"],
   },
+  {
+    category: "DevOps",
+    items: ["Docker", "GitLab CI/CD", "Git · SVN"],
+  },
+  {
+    category: "GIS · 특화",
+    items: ["GDAL", "GeoTIFF", "Leaflet", "대용량 이미지 처리", "B2B Commerce", "Enterprise CMS"],
+  },
+]
+
+/** Hero 영역의 핵심 지표 타일. (검증 가능한 사실만) */
+const stats: { value: string; label: string }[] = [
+  { value: "8+", label: "년 경력 · Full Stack" },
+  { value: "단독", label: "설계·개발·배포·운영 (KH)" },
+  { value: "팀장", label: "개발 리딩 경험" },
+  { value: "4", label: "엔터프라이즈 프로젝트" },
+]
+
+/** Hero 영역의 핵심 키워드 칩. */
+const heroKeywords: string[] = [
+  "Java",
+  "Spring Boot",
+  "Next.js",
+  "AWS",
+  "GDAL · GIS",
+  "Docker",
+  "System Architecture",
 ]
 
 const experience: ExperienceItem[] = [
@@ -104,28 +131,45 @@ const experience: ExperienceItem[] = [
     company: "큐브에이",
     period: "2024.02 ~ 2026.04",
     description:
-      "개발 팀장으로 팀을 이끌며 휴그린·TV조선 리뉴얼, CJ 골프장 GIS 등 주요 프로젝트의 설계·기획·개발을 총괄했습니다.",
+      "개발 팀장으로 팀을 이끌며 주요 프로젝트의 설계·기획·개발을 총괄했습니다.",
+    highlights: [
+      "휴그린·TV조선 리뉴얼, CJ 골프장 GIS 등 주요 프로젝트의 설계·기획·개발 총괄.",
+      "개발 팀장으로 팀을 리딩 — 동료와 문제를 공유하며 프로젝트를 끌고 감.",
+      "Spring Boot 기반 CMS·결제·GIS까지 다루는 도메인 폭을 넓힘.",
+    ],
   },
   {
     role: "웹 개발자 (대리)",
     company: "트라이코코리아",
     period: "2022.11 ~ 2023.11",
-    description:
-      "Java/Spring 기반 사내 웹 개발·유지보수. 연말정산, 고객 메일링, PDF 인증서 서명, Clip Report 보고서를 개발했습니다.",
+    description: "Java/Spring 기반 사내 웹 개발·유지보수를 담당했습니다.",
+    highlights: [
+      "연말정산 기능 개발, 고객 메일링 서비스(Admin Job Scheduler) 구축.",
+      "Apache PDFBox로 PDF 인증서 서명, Clip Report 기반 계약서·보고서 개발.",
+      "레거시 코드 리팩터링과 홈페이지 리뉴얼.",
+    ],
   },
   {
     role: "연구원 (대리)",
     company: "라온텍",
     period: "2020.02 ~ 2022.08",
-    description:
-      "관공서 교통 시스템(BIS/ITS) 개발·유지보수. 지도 API, 영상 스트리밍, 통계, 날씨 연계(JPA)를 다뤘습니다.",
+    description: "관공서 교통 시스템(BIS/ITS)을 개발·운영했습니다.",
+    highlights: [
+      "버스 운영(BIS)·지능형 교통(ITS) 시스템 개발 (천안·하남·남양주·고양·청주·목포 등).",
+      "Kakao/Naver 지도 API, Wowza 영상 스트리밍, HighChart 통계, Spring Security 적용.",
+      "날씨 연계 시스템을 JPA 기반으로 설계·개발, 설계~구현~테스트~감리까지 수행.",
+    ],
   },
   {
     role: "IT (미국 뉴저지)",
     company: "BEAUTY PLUS (USA)",
     period: "2016.10 ~ 2018.11",
     description:
-      "무역회사 ERP 환경에서 IT 지원과 시스템 유지보수, 보고서·VBA 자동화를 담당했습니다.",
+      "무역회사 ERP 환경에서 IT 지원과 시스템 유지보수를 담당했습니다.",
+    highlights: [
+      "세일즈맨별 매출 보고서, UPS·ERP 시스템 맵핑, 바코드 재고 입출 프로세스 처리.",
+      "VBA 자동화로 반복 업무를 줄이고 리턴 섹션 프로세스를 최적화.",
+    ],
   },
 ]
 
@@ -153,6 +197,8 @@ export const siteConfig = {
   nav,
   socials,
   techStack,
+  stats,
+  heroKeywords,
   capabilities,
   principles,
   skills,

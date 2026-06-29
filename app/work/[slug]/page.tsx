@@ -8,9 +8,12 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Container } from "@/components/container"
 import { Overline } from "@/components/overline"
+import { ArchitectureFlow } from "@/components/architecture-flow"
+import { Troubleshooting } from "@/components/troubleshooting"
 import { TechStack } from "@/components/sections/tech-stack"
 import { getProjectBySlug, getProjectSlugs } from "@/lib/projects"
 import { siteConfig } from "@/lib/site-config"
+import { cn } from "@/lib/utils"
 
 export function generateStaticParams() {
   return getProjectSlugs().map((slug) => ({ slug }))
@@ -46,16 +49,23 @@ export async function generateMetadata({
 function CaseSection({
   title,
   children,
+  wide,
 }: {
   title: string
   children: React.ReactNode
+  wide?: boolean
 }) {
   return (
     <section className="grid gap-3 border-t border-border py-8 first:border-t-0 first:pt-0 lg:grid-cols-[160px_1fr] lg:gap-10 lg:py-10">
       <h2 className="font-heading text-sm font-semibold tracking-tight text-foreground">
         {title}
       </h2>
-      <div className="max-w-2xl text-[15px] leading-7 text-foreground/80">
+      <div
+        className={cn(
+          "text-[15px] leading-7 text-foreground/80",
+          wide ? "max-w-3xl" : "max-w-2xl"
+        )}
+      >
         {children}
       </div>
     </section>
@@ -146,8 +156,12 @@ export default async function CaseStudyPage({
             />
           </CaseSection>
 
-          <CaseSection title="설계">
+          <CaseSection title="설계" wide>
             <p className="text-pretty">{project.architecture}</p>
+            <ArchitectureFlow
+              nodes={project.architectureFlow}
+              className="mt-5"
+            />
           </CaseSection>
 
           <CaseSection title="구현">
@@ -168,13 +182,8 @@ export default async function CaseStudyPage({
             />
           </CaseSection>
 
-          <CaseSection title="트러블슈팅">
-            <TermList
-              items={project.troubleshooting.map((t) => ({
-                term: t.issue,
-                detail: t.resolution,
-              }))}
-            />
+          <CaseSection title="트러블슈팅" wide>
+            <Troubleshooting items={project.troubleshooting} />
           </CaseSection>
 
           <CaseSection title="결과">

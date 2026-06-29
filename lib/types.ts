@@ -85,6 +85,8 @@ export interface ArchitectureNode {
   tech?: string
   /** semantic icon key (mapped to a lucide icon in ArchitectureFlow). */
   icon?: string
+  /** brand logo path under /public (e.g. "/logos/spring.svg"); takes precedence. */
+  logo?: string
 }
 
 /** A short, highlighted snippet of the real core logic (~20 lines). */

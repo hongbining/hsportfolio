@@ -82,12 +82,12 @@ public void onPlaced(OrderPlacedEvent e) {
     architecture:
       "프론트엔드(Next.js 16 RSC)에서 인증에 따라 갈리는 데이터를 1차로 거르고, Spring Security 세션이 모든 요청의 인증을 통제합니다. 도메인은 Spring Boot 428개 클래스(서비스 122·컨트롤러 71·매퍼 50)로, MyBatis를 통해 MySQL과 통신하며, 이미지·문서는 Cloudflare R2/S3로 추상화했습니다. 공통 응답 규격(ApiResponse)·전역 예외 핸들러·DTO/엔티티 분리를 컨벤션으로 세웠고, 프론트는 90개 페이지·77개 컴포넌트, Flyway 89개를 형상관리합니다.",
     architectureFlow: [
-      { icon: "code2", label: "Next.js 16", tech: "App Router · RSC" },
-      { icon: "shield", label: "Spring Security", tech: "세션 인증 게이트" },
-      { icon: "spring", label: "Spring Boot", tech: "도메인 428 클래스" },
+      { logo: "/logos/nextjs.svg", label: "Next.js 16", tech: "App Router · RSC" },
+      { logo: "/logos/spring.svg", label: "Spring Security", tech: "세션 인증 게이트" },
+      { logo: "/logos/spring.svg", label: "Spring Boot", tech: "도메인 428 클래스" },
       { icon: "layers", label: "MyBatis", tech: "직접 SQL" },
-      { icon: "database", label: "MySQL", tech: "Flyway 89" },
-      { icon: "storage", label: "Cloudflare R2 / S3", tech: "이미지·문서" },
+      { logo: "/logos/mysql.svg", label: "MySQL", tech: "Flyway 89" },
+      { logo: "/logos/cloudflare.svg", label: "Cloudflare R2 / S3", tech: "이미지·문서" },
     ],
     coreFeatures: [
       {
@@ -399,7 +399,7 @@ public void runRecurringBilling() {
       "사용자(VOD·구독) 요청을 Spring Boot가 받아 콘텐츠 시청권과 결제를 연결합니다. 결제는 이니시스 단건과 정기결제 배치로 분리하고, 회원/CRM·관리자 CMS·YouTube API를 연동했습니다.",
     architectureFlow: [
       { icon: "users", label: "사용자", tech: "VOD · 구독" },
-      { icon: "server", label: "Spring Boot", tech: "시청권 · 회원" },
+      { logo: "/logos/spring.svg", label: "Spring Boot", tech: "시청권 · 회원" },
       { icon: "payment", label: "이니시스", tech: "단건 · 정기결제 배치" },
       { icon: "database", label: "DB / CMS", tech: "콘텐츠 · CRM" },
     ],
@@ -506,7 +506,7 @@ public void aggregateAndNotify() {
       "관리자/대리점 요청을 Spring Boot CMS가 받아 사용자·상담·통계를 일원화하고, 운영 자동화(스케줄/배치)로 반복 업무를 줄이며, 알림톡·메일 발송을 연동했습니다.",
     architectureFlow: [
       { icon: "users", label: "관리자 / 대리점", tech: "운영 주체" },
-      { icon: "cms", label: "Spring Boot CMS", tech: "통합 관리" },
+      { logo: "/logos/spring.svg", label: "Spring Boot CMS", tech: "통합 관리" },
       { icon: "automation", label: "운영 자동화", tech: "스케줄 · 배치" },
       { icon: "notify", label: "알림톡 / 메일", tech: "고객 커뮤니케이션" },
     ],

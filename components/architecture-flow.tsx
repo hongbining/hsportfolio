@@ -42,9 +42,16 @@ const icons: Record<string, LucideIcon> = {
   notify: Bell,
 }
 
+// 로고가 없는 노드는 브랜드 컬러 아이콘으로. (literal 클래스 → Tailwind가 생성)
+const iconColor: Record<string, string> = {
+  hdd: "text-[#FF9900]", // AWS S3
+  cdn: "text-[#8C4FFF]", // CloudFront
+  map: "text-[#199900]", // Leaflet
+}
+
 /**
- * 시스템 아키텍처를 아이콘 노드 파이프라인으로 시각화합니다.
- * 모바일에서는 세로(↓), 데스크톱에서는 가로(→). 순수 CSS, 의존성 없음.
+ * 시스템 아키텍처를 브랜드 로고/아이콘 노드 파이프라인으로 시각화합니다.
+ * 모바일 세로(↓) · 데스크톱 가로(→). 정적 SVG 에셋만 사용, 라이브러리 없음.
  */
 export function ArchitectureFlow({
   nodes,
@@ -66,9 +73,27 @@ export function ArchitectureFlow({
         return (
           <div key={node.label} className="contents">
             <div className="flex items-center gap-3 rounded-xl border border-border bg-card px-3.5 py-3">
-              {Icon ? (
-                <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground/80">
-                  <Icon className="size-[18px]" aria-hidden="true" />
+              {node.logo ? (
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-white ring-1 ring-border/60">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={node.logo}
+                    alt=""
+                    aria-hidden="true"
+                    width={22}
+                    height={22}
+                    className="size-[22px]"
+                  />
+                </span>
+              ) : Icon ? (
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+                  <Icon
+                    className={cn(
+                      "size-[18px]",
+                      (node.icon && iconColor[node.icon]) || "text-foreground/80"
+                    )}
+                    aria-hidden="true"
+                  />
                 </span>
               ) : null}
               <span className="flex flex-col">

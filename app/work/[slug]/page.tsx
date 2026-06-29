@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button"
 import { Container } from "@/components/container"
 import { Overline } from "@/components/overline"
 import { ArchitectureFlow } from "@/components/architecture-flow"
-import { CodeBlock } from "@/components/code-block"
 import { ProjectOverview } from "@/components/project-overview"
 import { Troubleshooting } from "@/components/troubleshooting"
 import { getProjectBySlug, getProjectSlugs } from "@/lib/projects"
@@ -178,10 +177,6 @@ export default async function CaseStudyPage({
                 detail: f.detail,
               }))}
             />
-          </CaseSection>
-
-          <CaseSection title="코드 하이라이트" wide>
-            <CodeBlock code={project.codeHighlight} />
           </CaseSection>
 
           <CaseSection title="트레이드오프">

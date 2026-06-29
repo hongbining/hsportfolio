@@ -83,6 +83,8 @@ export interface CoreFeature {
 export interface ArchitectureNode {
   label: string
   tech?: string
+  /** semantic icon key (mapped to a lucide icon in ArchitectureFlow). */
+  icon?: string
 }
 
 /** A short, highlighted snippet of the real core logic (~20 lines). */

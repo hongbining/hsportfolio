@@ -1,9 +1,50 @@
+import {
+  Bell,
+  Cloud,
+  Code2,
+  CreditCard,
+  Database,
+  FileImage,
+  Globe,
+  HardDrive,
+  Layers,
+  LayoutDashboard,
+  Leaf,
+  Map,
+  Server,
+  Settings2,
+  ShieldCheck,
+  Users,
+  Workflow,
+  type LucideIcon,
+} from "lucide-react"
+
 import type { ArchitectureNode } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
+const icons: Record<string, LucideIcon> = {
+  code2: Code2,
+  shield: ShieldCheck,
+  spring: Leaf,
+  layers: Layers,
+  database: Database,
+  storage: Cloud,
+  hdd: HardDrive,
+  settings: Settings2,
+  image: FileImage,
+  cdn: Globe,
+  map: Map,
+  users: Users,
+  server: Server,
+  payment: CreditCard,
+  cms: LayoutDashboard,
+  automation: Workflow,
+  notify: Bell,
+}
+
 /**
- * 시스템 아키텍처를 단계 파이프라인으로 시각화합니다.
- * 모바일에서는 세로(↓), 데스크톱에서는 가로(→)로 흐릅니다. 의존성 없이 순수 CSS.
+ * 시스템 아키텍처를 아이콘 노드 파이프라인으로 시각화합니다.
+ * 모바일에서는 세로(↓), 데스크톱에서는 가로(→). 순수 CSS, 의존성 없음.
  */
 export function ArchitectureFlow({
   nodes,
@@ -16,31 +57,43 @@ export function ArchitectureFlow({
     <figure
       aria-label="시스템 아키텍처 흐름"
       className={cn(
-        "flex flex-col items-stretch gap-1.5 sm:flex-row sm:flex-wrap sm:items-stretch sm:gap-0",
+        "flex flex-col items-stretch gap-2 sm:flex-row sm:flex-wrap sm:items-stretch sm:gap-0",
         className
       )}
     >
-      {nodes.map((node, index) => (
-        <div key={node.label} className="contents">
-          <div className="flex flex-col justify-center rounded-lg border border-border bg-card px-3.5 py-2.5">
-            <span className="text-sm leading-tight font-medium">{node.label}</span>
-            {node.tech ? (
-              <span className="mt-0.5 font-mono text-[11px] text-muted-foreground">
-                {node.tech}
+      {nodes.map((node, index) => {
+        const Icon = node.icon ? icons[node.icon] : undefined
+        return (
+          <div key={node.label} className="contents">
+            <div className="flex items-center gap-3 rounded-xl border border-border bg-card px-3.5 py-3">
+              {Icon ? (
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground/80">
+                  <Icon className="size-[18px]" aria-hidden="true" />
+                </span>
+              ) : null}
+              <span className="flex flex-col">
+                <span className="text-sm leading-tight font-medium">
+                  {node.label}
+                </span>
+                {node.tech ? (
+                  <span className="mt-0.5 font-mono text-[11px] text-muted-foreground">
+                    {node.tech}
+                  </span>
+                ) : null}
               </span>
+            </div>
+            {index < nodes.length - 1 ? (
+              <div
+                aria-hidden="true"
+                className="flex items-center justify-center self-center px-1.5 text-muted-foreground/40 sm:px-2"
+              >
+                <span className="sm:hidden">↓</span>
+                <span className="hidden sm:inline">→</span>
+              </div>
             ) : null}
           </div>
-          {index < nodes.length - 1 ? (
-            <div
-              aria-hidden="true"
-              className="flex items-center justify-center self-center px-2 text-muted-foreground/50 sm:px-2.5"
-            >
-              <span className="sm:hidden">↓</span>
-              <span className="hidden sm:inline">→</span>
-            </div>
-          ) : null}
-        </div>
-      ))}
+        )
+      })}
     </figure>
   )
 }

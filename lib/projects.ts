@@ -82,12 +82,12 @@ public void onPlaced(OrderPlacedEvent e) {
     architecture:
       "프론트엔드(Next.js 16 RSC)에서 인증에 따라 갈리는 데이터를 1차로 거르고, Spring Security 세션이 모든 요청의 인증을 통제합니다. 도메인은 Spring Boot 428개 클래스(서비스 122·컨트롤러 71·매퍼 50)로, MyBatis를 통해 MySQL과 통신하며, 이미지·문서는 Cloudflare R2/S3로 추상화했습니다. 공통 응답 규격(ApiResponse)·전역 예외 핸들러·DTO/엔티티 분리를 컨벤션으로 세웠고, 프론트는 90개 페이지·77개 컴포넌트, Flyway 89개를 형상관리합니다.",
     architectureFlow: [
-      { label: "Next.js 16", tech: "App Router · RSC" },
-      { label: "Spring Security", tech: "세션 인증 게이트" },
-      { label: "Spring Boot", tech: "도메인 428 클래스" },
-      { label: "MyBatis", tech: "직접 SQL" },
-      { label: "MySQL", tech: "Flyway 89" },
-      { label: "Cloudflare R2 / S3", tech: "이미지·문서" },
+      { icon: "code2", label: "Next.js 16", tech: "App Router · RSC" },
+      { icon: "shield", label: "Spring Security", tech: "세션 인증 게이트" },
+      { icon: "spring", label: "Spring Boot", tech: "도메인 428 클래스" },
+      { icon: "layers", label: "MyBatis", tech: "직접 SQL" },
+      { icon: "database", label: "MySQL", tech: "Flyway 89" },
+      { icon: "storage", label: "Cloudflare R2 / S3", tech: "이미지·문서" },
     ],
     coreFeatures: [
       {
@@ -277,11 +277,11 @@ aws s3 sync ./tiles s3://cj-gis/course/ --cache-control "max-age=31536000"
     architecture:
       "GeoTIFF 원본을 GDAL로 재투영·타일링해 표준 지도 타일로 만들고, S3에 저장한 뒤 CloudFront로 캐싱·배포합니다. 브라우저는 Leaflet으로 보이는 영역의 타일만 받아 렌더하고, 그 위에 코스 보기·작업 일지·병해 모니터링 사용자 페이지와 현장 작업 관리 CMS를 올렸습니다. 전체는 Docker로 배포했습니다.",
     architectureFlow: [
-      { label: "GeoTIFF 원본", tech: "수백 MB~수 GB" },
-      { label: "GDAL", tech: "재투영 · 타일링" },
-      { label: "AWS S3", tech: "타일 저장" },
-      { label: "CloudFront", tech: "캐싱 · 배포" },
-      { label: "Leaflet", tech: "지도 렌더" },
+      { icon: "image", label: "GeoTIFF 원본", tech: "수백 MB~수 GB" },
+      { icon: "settings", label: "GDAL", tech: "재투영 · 타일링" },
+      { icon: "hdd", label: "AWS S3", tech: "타일 저장" },
+      { icon: "cdn", label: "CloudFront", tech: "캐싱 · 배포" },
+      { icon: "map", label: "Leaflet", tech: "지도 렌더" },
     ],
     coreFeatures: [
       {
@@ -398,10 +398,10 @@ public void runRecurringBilling() {
     architecture:
       "사용자(VOD·구독) 요청을 Spring Boot가 받아 콘텐츠 시청권과 결제를 연결합니다. 결제는 이니시스 단건과 정기결제 배치로 분리하고, 회원/CRM·관리자 CMS·YouTube API를 연동했습니다.",
     architectureFlow: [
-      { label: "사용자", tech: "VOD · 구독" },
-      { label: "Spring Boot", tech: "시청권 · 회원" },
-      { label: "이니시스", tech: "단건 · 정기결제 배치" },
-      { label: "DB / CMS", tech: "콘텐츠 · CRM" },
+      { icon: "users", label: "사용자", tech: "VOD · 구독" },
+      { icon: "server", label: "Spring Boot", tech: "시청권 · 회원" },
+      { icon: "payment", label: "이니시스", tech: "단건 · 정기결제 배치" },
+      { icon: "database", label: "DB / CMS", tech: "콘텐츠 · CRM" },
     ],
     coreFeatures: [
       { title: "VOD · 패키지 다시보기", detail: "다시보기 시스템을 개발했습니다." },
@@ -505,10 +505,10 @@ public void aggregateAndNotify() {
     architecture:
       "관리자/대리점 요청을 Spring Boot CMS가 받아 사용자·상담·통계를 일원화하고, 운영 자동화(스케줄/배치)로 반복 업무를 줄이며, 알림톡·메일 발송을 연동했습니다.",
     architectureFlow: [
-      { label: "관리자 / 대리점", tech: "운영 주체" },
-      { label: "Spring Boot CMS", tech: "통합 관리" },
-      { label: "운영 자동화", tech: "스케줄 · 배치" },
-      { label: "알림톡 / 메일", tech: "고객 커뮤니케이션" },
+      { icon: "users", label: "관리자 / 대리점", tech: "운영 주체" },
+      { icon: "cms", label: "Spring Boot CMS", tech: "통합 관리" },
+      { icon: "automation", label: "운영 자동화", tech: "스케줄 · 배치" },
+      { icon: "notify", label: "알림톡 / 메일", tech: "고객 커뮤니케이션" },
     ],
     coreFeatures: [
       { title: "관리자 CMS", detail: "관리자 시스템을 설계·개발했습니다." },

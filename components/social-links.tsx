@@ -23,6 +23,8 @@ export function SocialLinks({
   items = siteConfig.socials,
   className,
 }: SocialLinksProps) {
+  if (items.length === 0) return null
+
   return (
     <ul className={cn("flex items-center gap-1", className)}>
       {items.map((social) => {

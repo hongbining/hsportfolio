@@ -19,10 +19,8 @@ const nav: NavItem[] = [
   { title: "연락처", href: "#contact" },
 ]
 
-const socials: SocialLink[] = [
-  { platform: "github", label: "GitHub", href: "https://github.com/hongbining" },
-  { platform: "email", label: "이메일", href: `mailto:${email}` },
-]
+// 소셜 아이콘 링크는 노출하지 않습니다. (연락처 섹션의 '이메일 보내기' 버튼 유지)
+const socials: SocialLink[] = []
 
 /** 히어로 영역에 노출되는 주요 기술 스택. */
 const techStack: string[] = [

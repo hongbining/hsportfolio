@@ -17,7 +17,7 @@ export function Hero() {
     >
       <ArchitectureBackground />
       <Container>
-        <div className="flex max-w-3xl flex-col items-start gap-6 py-24 sm:py-28 lg:py-32">
+        <div className="flex max-w-4xl flex-col items-start gap-7 py-28 sm:py-32 lg:py-40">
           {siteConfig.availability ? (
             <Reveal>
               <p className="inline-flex items-center gap-2 rounded-full border border-border bg-background/60 px-3 py-1 text-sm text-muted-foreground">
@@ -33,20 +33,20 @@ export function Hero() {
           <Reveal delay={0.05}>
             <h1
               id="hero-heading"
-              className="font-heading text-4xl font-semibold tracking-tight text-balance sm:text-5xl lg:text-[3.25rem] lg:leading-[1.1]"
+              className="font-heading text-4xl font-semibold tracking-tight text-balance leading-[1.3] sm:text-5xl sm:leading-[1.28] lg:text-[3.25rem] lg:leading-[1.3]"
             >
               {siteConfig.headline}
             </h1>
           </Reveal>
 
           <Reveal delay={0.1}>
-            <p className="max-w-2xl text-lg leading-relaxed text-muted-foreground text-pretty">
+            <p className="max-w-3xl text-lg leading-relaxed text-muted-foreground text-pretty">
               {siteConfig.subheadline}
             </p>
           </Reveal>
 
           <Reveal delay={0.15} className="w-full">
-            <dl className="grid w-full max-w-2xl grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-4">
+            <dl className="grid w-full max-w-3xl grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-4">
               {siteConfig.stats.map((stat) => (
                 <div key={stat.label} className="bg-background p-4">
                   <dd className="font-heading text-2xl font-semibold tracking-tight">

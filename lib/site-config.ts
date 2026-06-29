@@ -1,5 +1,6 @@
 import type {
   Capability,
+  CoreStrength,
   ExperienceItem,
   NavItem,
   Principle,
@@ -125,6 +126,52 @@ const heroKeywords: string[] = [
   "System Architecture",
 ]
 
+/** Hero 바로 아래 — 한눈에 읽히는 핵심 역량. (실제 경험 기반) */
+const coreStrengths: CoreStrength[] = [
+  {
+    icon: "network",
+    title: "System Architecture",
+    description:
+      "주문·재고·정산의 정합성을 트랜잭션과 DB 제약으로 보장하는 시스템을 설계합니다.",
+  },
+  {
+    icon: "layers",
+    title: "Full Stack Development",
+    description:
+      "기획·DB·백엔드·프론트·배포까지 한 사람이 끝까지 책임지고 만듭니다.",
+  },
+  {
+    icon: "globe",
+    title: "GIS Engineering",
+    description:
+      "GeoTIFF·GDAL로 수 GB 이미지를 서비스 가능한 지도 타일로 변환합니다.",
+  },
+  {
+    icon: "server",
+    title: "AWS Infrastructure",
+    description:
+      "S3·CloudFront로 대용량 자산을 배포하고, R2로 egress 비용을 최적화합니다.",
+  },
+  {
+    icon: "users",
+    title: "Team Leadership",
+    description:
+      "개발 팀장으로 주요 프로젝트의 설계·기획·개발을 총괄했습니다.",
+  },
+  {
+    icon: "boxes",
+    title: "CMS Platform",
+    description:
+      "TV조선·휴그린 등 운영 인력이 매일 쓰는 관리자 시스템을 구축했습니다.",
+  },
+  {
+    icon: "gauge",
+    title: "Performance & Ops",
+    description:
+      "원자적 연산·배치·운영 자동화로 안정성과 운영 효율을 확보합니다.",
+  },
+]
+
 const experience: ExperienceItem[] = [
   {
     role: "IT 책임연구원 · 개발 팀장",
@@ -189,7 +236,7 @@ export const siteConfig = {
   email,
   url,
   availability:
-    "B2B SaaS · 엔터프라이즈 백엔드/풀스택 포지션을 찾고 있습니다" as string | null,
+    "SaaS · 엔터프라이즈 백엔드/풀스택 포지션을 찾고 있습니다" as string | null,
   about: [
     "저는 8년차 풀스택 개발자입니다. Spring Boot 기반 웹 서비스와 엔터프라이즈 시스템을 만들어 왔고, SI·공공·콘텐츠 플랫폼·GIS 등 다양한 도메인에서 단순 개발을 넘어 설계와 운영까지 수행했습니다.",
     "최근에는 건강기능식품 B2B 폐쇄몰을 기획부터 배포·운영까지 혼자 만들고 있습니다. 화려한 기능보다 시스템 구조 개선·자동화·운영 효율에 관심이 많고, 확장 가능한 아키텍처를 지향합니다. 개발 팀장으로 주요 프로젝트를 이끈 경험도 있습니다.",
@@ -199,6 +246,7 @@ export const siteConfig = {
   techStack,
   stats,
   heroKeywords,
+  coreStrengths,
   capabilities,
   principles,
   skills,

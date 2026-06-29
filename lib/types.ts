@@ -19,6 +19,13 @@ export interface Capability {
   description: string
 }
 
+export interface CoreStrength {
+  /** lucide icon key. */
+  icon: string
+  title: string
+  description: string
+}
+
 export interface Principle {
   title: string
   description: string
@@ -78,6 +85,14 @@ export interface ArchitectureNode {
   tech?: string
 }
 
+/** A short, highlighted snippet of the real core logic (~20 lines). */
+export interface CodeHighlight {
+  language: string
+  filename?: string
+  caption?: string
+  code: string
+}
+
 /**
  * A case study. Deliberately models engineering substance — the business
  * problem, the architecture, the decisions and their rationale, and the
@@ -95,8 +110,16 @@ export interface Project {
   /** Human-readable period, e.g. "2026.04 ~ 현재". */
   period: string
   role: string
+  /** 팀 규모 (overview card). */
+  teamSize: string
+  /** 배포 환경 (overview card). */
+  deployment: string
   /** The single capability this project is meant to prove. */
   capability: string
+  /** One-line "이 프로젝트의 핵심" focus, shown prominently. */
+  focus: string
+  /** Drives which signature element leads the case study. */
+  focusType: "architecture" | "features"
   /** The interview question this case study should provoke. */
   interviewQuestion: string
   /** One-line summary used in cards and metadata. */
@@ -113,6 +136,8 @@ export interface Project {
   architectureFlow: ArchitectureNode[]
   /** 구현 — core features built. */
   coreFeatures: CoreFeature[]
+  /** 코드 하이라이트 — the real core logic, ~20 lines. */
+  codeHighlight: CodeHighlight
   /** 트레이드오프 — choices and the costs accepted in exchange. */
   tradeoffs: TradeOff[]
   /** 트러블슈팅 — real production issues and how they were resolved. */

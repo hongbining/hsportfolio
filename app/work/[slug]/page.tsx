@@ -4,13 +4,13 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import { ArrowLeft, Check, Mail } from "lucide-react"
 
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Container } from "@/components/container"
 import { Overline } from "@/components/overline"
 import { ArchitectureFlow } from "@/components/architecture-flow"
+import { CodeBlock } from "@/components/code-block"
+import { ProjectOverview } from "@/components/project-overview"
 import { Troubleshooting } from "@/components/troubleshooting"
-import { TechStack } from "@/components/sections/tech-stack"
 import { getProjectBySlug, getProjectSlugs } from "@/lib/projects"
 import { siteConfig } from "@/lib/site-config"
 import { cn } from "@/lib/utils"
@@ -108,27 +108,32 @@ export default async function CaseStudyPage({
         </Link>
 
         <header className="mt-8 max-w-3xl">
-          <Overline>{project.capability}</Overline>
-          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-muted-foreground">
-            <span>{project.domain}</span>
-            <span aria-hidden="true">·</span>
-            <span>{project.period}</span>
-            <Badge variant="outline" className="font-normal">
-              {project.role}
-            </Badge>
-          </div>
-          <h1 className="mt-4 font-heading text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
+          <Overline>{`${project.capability} · ${project.domain}`}</Overline>
+          <h1 className="mt-3 font-heading text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
             {project.title}
           </h1>
           <p className="mt-4 text-lg leading-relaxed text-foreground/80 text-pretty">
             {project.summary}
           </p>
-          <div className="mt-6">
-            <TechStack items={project.stack} />
-          </div>
         </header>
 
-        <div className="mt-10">
+        <div className="mt-8 space-y-4">
+          <ProjectOverview project={project} />
+          <div className="rounded-xl border border-border bg-muted/30 p-5 sm:p-6">
+            <Overline>이 프로젝트의 핵심</Overline>
+            <p className="mt-2 text-base leading-relaxed font-medium tracking-tight text-pretty">
+              {project.focus}
+            </p>
+            {project.focusType === "architecture" ? (
+              <ArchitectureFlow
+                nodes={project.architectureFlow}
+                className="mt-5"
+              />
+            ) : null}
+          </div>
+        </div>
+
+        <div className="mt-4">
           <CaseSection title="문제">
             <p className="text-pretty">{project.problem}</p>
           </CaseSection>
@@ -147,7 +152,7 @@ export default async function CaseStudyPage({
             </ul>
           </CaseSection>
 
-          <CaseSection title="판단">
+          <CaseSection title="기술 선택 이유">
             <TermList
               items={project.decisions.map((d) => ({
                 term: d.title,
@@ -158,10 +163,12 @@ export default async function CaseStudyPage({
 
           <CaseSection title="설계" wide>
             <p className="text-pretty">{project.architecture}</p>
-            <ArchitectureFlow
-              nodes={project.architectureFlow}
-              className="mt-5"
-            />
+            {project.focusType !== "architecture" ? (
+              <ArchitectureFlow
+                nodes={project.architectureFlow}
+                className="mt-5"
+              />
+            ) : null}
           </CaseSection>
 
           <CaseSection title="구현">
@@ -171,6 +178,10 @@ export default async function CaseStudyPage({
                 detail: f.detail,
               }))}
             />
+          </CaseSection>
+
+          <CaseSection title="코드 하이라이트" wide>
+            <CodeBlock code={project.codeHighlight} />
           </CaseSection>
 
           <CaseSection title="트레이드오프">

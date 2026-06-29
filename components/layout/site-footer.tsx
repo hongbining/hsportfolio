@@ -3,8 +3,6 @@ import { SocialLinks } from "@/components/social-links"
 import { siteConfig } from "@/lib/site-config"
 
 export function SiteFooter() {
-  const year = new Date().getFullYear()
-
   return (
     <footer className="border-t border-border/60">
       <Container>
@@ -34,15 +32,6 @@ export function SiteFooter() {
           </nav>
 
           <SocialLinks />
-        </div>
-
-        <div className="flex flex-col gap-2 border-t border-border/60 py-6 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs text-muted-foreground">
-            © {year} {siteConfig.name}.
-          </p>
-          <p className="text-xs text-muted-foreground">
-            Next.js · Tailwind CSS · shadcn/ui로 제작
-          </p>
         </div>
       </Container>
     </footer>

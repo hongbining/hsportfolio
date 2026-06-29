@@ -27,7 +27,14 @@ export function ContactCta() {
               align="center"
               eyebrow="연락처"
               title="신뢰할 수 있는 무언가를 함께 만들어요."
-              description="확장이 필요한 시스템, 한 단계 끌어올릴 팀, 또는 채용할 자리가 있으신가요? 편하게 연락 주세요."
+              description={
+                <>
+                  확장이 필요한 시스템, 한 단계 끌어올릴 팀, 또는 채용할 자리가
+                  있으신가요?
+                  <br />
+                  편하게 연락 주세요.
+                </>
+              }
             />
             <div className="flex flex-wrap items-center justify-center gap-3">
               <Button asChild size="xl">

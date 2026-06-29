@@ -64,7 +64,7 @@ export function ArchitectureFlow({
     <figure
       aria-label="시스템 아키텍처 흐름"
       className={cn(
-        "flex flex-col items-stretch gap-2 sm:flex-row sm:flex-wrap sm:items-stretch sm:gap-0",
+        "flex flex-col items-stretch gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-0 sm:gap-y-3",
         className
       )}
     >

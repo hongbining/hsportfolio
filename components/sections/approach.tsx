@@ -13,8 +13,7 @@ export function Approach() {
               <SectionHeading
                 id="approach-heading"
                 eyebrow="일하는 방식"
-                title="엔지니어링 원칙"
-                description="모든 팀과 코드베이스, 그리고 의사결정에 기본값으로 가져가는 원칙입니다."
+                title="개발은 기능을 만드는 일이 아니라, 문제를 해결하는 일입니다."
               />
             </div>
           </Reveal>

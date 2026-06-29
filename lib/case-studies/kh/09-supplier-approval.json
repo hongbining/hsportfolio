@@ -1,0 +1,141 @@
+{
+  "id": "supplier-approval",
+  "title": "Supplier Approval Workflow",
+  "summary": "How KH Wholesale onboards suppliers through a maker-checker, fully audited state machine that compressed onboarding from ~18 business days to 4 while making every decision attributable and replayable.",
+  "blocks": [
+    {
+      "kind": "lead",
+      "text": "Supplier onboarding is the one place in KH where the platform decides who is allowed to take buyers' money, so I built it as an explicit, append-only-audited state machine with enforced maker-checker separation rather than an inbox of emails."
+    },
+    {
+      "kind": "prose",
+      "paragraphs": [
+        "Before we automated it, supplier onboarding was a manual, ticket-and-email process that took roughly 18 business days. Documents arrived as attachments, someone eyeballed a business registration number, someone else (sometimes the same person) approved it, and the only audit trail was a thread. For a B2B platform that extends credit to buyers and pays out real KRW to suppliers, that was both slow and indefensible — we could not reliably answer 'who approved this supplier, on what evidence, and when?'",
+        "The Supplier context now models onboarding as a SupplierApplication aggregate that walks a fixed state machine: APPLIED → DOCS_SUBMITTED → AUTOMATED_CHECKS → RISK_REVIEW → COMPLIANCE_APPROVAL → CATALOG_ONBOARDING → ACTIVATED, with INFO_REQUESTED (loops back to the applicant for more documents) and REJECTED as terminal-ish branches. Transitions are table-driven and DB-enforced exactly like the Order and Shipment state machines, so an application can never skip RISK_REVIEW or land in COMPLIANCE_APPROVAL without first passing AUTOMATED_CHECKS.",
+        "Every movement through the machine is recorded as an append-only ApprovalDecision row. There is no UPDATE and no DELETE on that table; a reversal is just another decision that references the prior one. ApprovalTask rows represent the work to be done at the manual gates (RISK_REVIEW and COMPLIANCE_APPROVAL) and carry the assignee, while ApprovalDecision captures what actually happened — the actor, the outcome, the reason, and the document evidence snapshot the decision was made against."
+      ]
+    },
+    {
+      "kind": "states",
+      "title": "SupplierApplication state machine",
+      "states": [
+        {
+          "state": "APPLIED",
+          "description": "Organization (org_type = supplier) has submitted an application but not yet uploaded required documents.",
+          "transitions": [
+            { "on": "documents uploaded", "to": "DOCS_SUBMITTED" },
+            { "on": "withdraw / reject", "to": "REJECTED" }
+          ]
+        },
+        {
+          "state": "DOCS_SUBMITTED",
+          "description": "Business registration, bank account details, and food-safety certificates are attached in S3 and ready for validation.",
+          "transitions": [
+            { "on": "all required docs present", "to": "AUTOMATED_CHECKS" },
+            { "on": "missing / unreadable docs", "to": "INFO_REQUESTED" }
+          ]
+        },
+        {
+          "state": "AUTOMATED_CHECKS",
+          "description": "System runs business-registration validation (NTS API), bank-account verification, and duplicate-supplier check. No human involved.",
+          "transitions": [
+            { "on": "all checks pass", "to": "RISK_REVIEW" },
+            { "on": "soft failure (fixable)", "to": "INFO_REQUESTED" },
+            { "on": "hard failure (duplicate / invalid)", "to": "REJECTED" }
+          ]
+        },
+        {
+          "state": "RISK_REVIEW",
+          "description": "The 'maker' gate. A risk reviewer manually assesses the applicant and the automated-check evidence and records an ApprovalDecision.",
+          "transitions": [
+            { "on": "maker approves", "to": "COMPLIANCE_APPROVAL" },
+            { "on": "needs clarification", "to": "INFO_REQUESTED" },
+            { "on": "maker rejects", "to": "REJECTED" }
+          ]
+        },
+        {
+          "state": "COMPLIANCE_APPROVAL",
+          "description": "The 'checker' gate, enforced to be a different reviewer than the maker. Compliance signs off on the risk decision.",
+          "transitions": [
+            { "on": "checker approves", "to": "CATALOG_ONBOARDING" },
+            { "on": "checker sends back", "to": "RISK_REVIEW" },
+            { "on": "checker rejects", "to": "REJECTED" }
+          ]
+        },
+        {
+          "state": "CATALOG_ONBOARDING",
+          "description": "Operational setup: create the supplier's PriceList and load the initial set of Skus so the supplier has something sellable.",
+          "transitions": [
+            { "on": "PriceList + initial SKUs ready", "to": "ACTIVATED" },
+            { "on": "onboarding blocked", "to": "INFO_REQUESTED" }
+          ]
+        },
+        {
+          "state": "ACTIVATED",
+          "description": "Supplier is live: their SKUs are projected into OpenSearch, they can receive FulfillmentGroups, and they are eligible for Settlement/Payout.",
+          "transitions": []
+        },
+        {
+          "state": "INFO_REQUESTED",
+          "description": "Branch: the application is parked pending applicant action (more documents, corrected bank account, clarification). Loops back into the main flow once resolved.",
+          "transitions": [
+            { "on": "applicant responds", "to": "DOCS_SUBMITTED" },
+            { "on": "no response / abandon", "to": "REJECTED" }
+          ]
+        },
+        {
+          "state": "REJECTED",
+          "description": "Terminal failure branch. Recorded with a reason on an append-only ApprovalDecision; an applicant may re-apply as a new SupplierApplication.",
+          "transitions": []
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "caption": "AUTOMATED_CHECKS gate — what each check validates and how failure is handled",
+      "columns": ["Check", "What it validates", "Data source", "Failure handling"],
+      "rows": [
+        [
+          "Business-registration validation",
+          "That the business registration number is real, active, and matches the legal entity name on the application.",
+          "NTS (National Tax Service) government API",
+          "Invalid / closed number → hard failure → REJECTED. Transient API error or name mismatch that looks like a typo → INFO_REQUESTED with the specific field flagged; the call is retried with backoff before being treated as a failure."
+        ],
+        [
+          "Bank-account verification",
+          "That the payout bank account exists and the account holder name matches the registered supplier entity (so payouts can't be misdirected).",
+          "Bank-account verification provider",
+          "Name/account mismatch → INFO_REQUESTED so the supplier can correct it (this is the most common fixable failure). Unverifiable account after retries → blocks the gate; cannot reach ACTIVATED without a verified payout target."
+        ],
+        [
+          "Duplicate-supplier check",
+          "That this entity (by business registration number + bank account fingerprint) is not already an active or in-flight Organization, to stop a banned or duplicate supplier re-entering under a new application.",
+          "Internal Supplier/Identity data (Postgres)",
+          "Exact duplicate of an active supplier → hard failure → REJECTED. Near-duplicate / same registration number on a prior rejected application → flagged on the ApprovalTask for the maker to adjudicate in RISK_REVIEW rather than auto-deciding."
+        ]
+      ]
+    },
+    {
+      "kind": "prose",
+      "paragraphs": [
+        "The two manual gates are deliberately split. RISK_REVIEW is the maker: a reviewer looks at the applicant plus the automated-check evidence and proposes a decision. COMPLIANCE_APPROVAL is the checker: a different person ratifies it. The separation is enforced in code, not by convention — the transition into COMPLIANCE_APPROVAL is rejected if the acting user is the same User who recorded the RISK_REVIEW decision, and the application UI won't even surface the checker action to that person. This means no single employee can both originate and approve a supplier, which is the whole point of maker-checker for a system that controls money movement.",
+        "The ApprovalDecision log is append-only double-entry-style accountability for governance: every decision row carries application_id, the from/to states, the actor User and their Role, the decision outcome, a free-text reason, and a snapshot reference to the document evidence (S3 object versions) the decision was made against. Because we never mutate or delete these rows, we can reconstruct the exact approval history of any supplier — including 'who was the maker, who was the checker, and what did they see' — which is precisely the question that an audit, a dispute, or a regulator asks. Combined with the table-driven state machine, the audit log and the workflow can never disagree: the current state is the fold of the decision history.",
+        "The payoff was operational as much as it was correctness. Replacing the email-and-ticket process with the automated AUTOMATED_CHECKS gate and a structured maker-checker queue dropped supplier onboarding from roughly 18 business days to 4, against an SLA target of under 5 business days. Most of the savings came from front-loading the deterministic work (the three automated checks) so that humans only spend time on genuine judgment calls at RISK_REVIEW and COMPLIANCE_APPROVAL instead of on data entry and chasing documents."
+      ]
+    },
+    {
+      "kind": "stats",
+      "metrics": [
+        { "label": "Supplier onboarding time", "value": "4 business days", "delta": "from ~18", "note": "Against an SLA target of < 5 business days." },
+        { "label": "Maker-checker separation", "value": "Enforced in code", "note": "Checker must be a different User than the maker; transition is rejected otherwise." },
+        { "label": "Approval audit trail", "value": "Append-only", "note": "ApprovalDecision rows are never updated or deleted; state is the fold of decisions." }
+      ]
+    },
+    {
+      "kind": "callout",
+      "tone": "insight",
+      "title": "Why maker-checker plus an append-only log earns its keep in B2B",
+      "body": "In a consumer marketplace a bad signup is an annoyance; in B2B wholesale, an approved supplier can receive FulfillmentGroups and draw real KRW payouts via Settlement, so onboarding is effectively a money-movement control. Maker-checker separation removes the single point of failure (one compromised or careless reviewer can't both originate and approve), and the append-only ApprovalDecision log makes every approval attributable and replayable after the fact. The cost is one extra human gate and a little queue latency; the return is that when a fraud case, chargeback dispute, or audit lands, we answer 'who approved this, on what evidence, and when' in seconds instead of reconstructing an email thread — and we can prove the two roles were genuinely separate."
+    }
+  ]
+}

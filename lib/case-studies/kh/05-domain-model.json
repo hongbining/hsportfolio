@@ -1,0 +1,271 @@
+{
+  "id": "domain-model",
+  "title": "Domain Model",
+  "summary": "The aggregates, fields, and invariants behind KH Wholesale — anchored on the FulfillmentGroup (per-supplier sub-order) as the spine that ties ordering, fulfillment, and settlement together.",
+  "blocks": [
+    {
+      "kind": "lead",
+      "text": "I modeled KH Wholesale as a set of strict bounded contexts sharing one Postgres database, and the single decision that shaped everything downstream was splitting every buyer Order into one FulfillmentGroup per supplier."
+    },
+    {
+      "kind": "prose",
+      "paragraphs": [
+        "KH is a managed marketplace: a buyer fills one Cart that can span many suppliers, and KH orchestrates pricing, credit, inventory, fulfillment, and settlement behind it. That single-cart-many-suppliers reality is the central modeling tension. A buyer thinks in terms of one Order; a supplier only ever acts on the part of that Order that belongs to them; and settlement has to pay each supplier independently for exactly the lines they fulfilled. If you model only the buyer-level Order, every one of those concerns leaks into ad-hoc filtering and conditional logic.",
+        "So the spine of the domain is the FulfillmentGroup — the per-supplier sub-order created when an Order is placed. The Order is a thin buyer-level header whose status is derived, not stored authoritatively; the FulfillmentGroup is where real work happens. Suppliers accept or reject a FulfillmentGroup, inventory is reserved per FulfillmentGroup line, Shipments are created against a FulfillmentGroup, and a Settlement is computed per FulfillmentGroup. An OrderLine therefore belongs to exactly one FulfillmentGroup (never directly to the Order), which makes ownership unambiguous at every layer: RBAC scoping, the supplier portal's work queue, the carrier handoff, and the payout ledger all key off the same aggregate.",
+        "The ubiquitous language is deliberately small and shared across all three frontends (buyer storefront, supplier portal, ops admin) and the backend modules. An Organization is either a buyer or a supplier (distinguished by org_type); Users belong to orgs through a Membership that carries a Role; a Sku is the sellable unit and always belongs to one supplier Organization, which is what makes the per-supplier split mechanical rather than heuristic — we group a Cart's items by sku.supplier_org_id. Money is integer KRW stored as bigint, and prices are snapshotted onto the OrderLine at placement so the amount a buyer agreed to is immutable regardless of later price-list changes. State lives in explicit, table-driven state machines rather than scattered booleans."
+      ]
+    },
+    {
+      "kind": "entities",
+      "entities": [
+        {
+          "name": "Organization",
+          "description": "A buyer OR a supplier tenant. The root of row-level isolation — almost every other row carries org_id and is scoped to it.",
+          "fields": [
+            { "name": "id", "type": "uuid", "note": "primary key" },
+            { "name": "org_type", "type": "enum", "note": "'buyer' | 'supplier'" },
+            { "name": "legal_name", "type": "text" },
+            { "name": "business_registration_no", "type": "text", "note": "validated via NTS gov API during onboarding" },
+            { "name": "credit_limit_krw", "type": "bigint", "note": "buyers only; checked synchronously at checkout" },
+            { "name": "status", "type": "enum", "note": "'active' | 'suspended'; suppliers reach 'active' only via the approval workflow" }
+          ],
+          "relations": [
+            "1 Organization has many Memberships (its Users)",
+            "A supplier Organization owns many Skus",
+            "A buyer Organization owns many Carts and Orders"
+          ]
+        },
+        {
+          "name": "Membership",
+          "description": "The User-to-Organization join that carries the Role. RBAC and tenant scoping resolve through Membership.",
+          "fields": [
+            { "name": "id", "type": "uuid" },
+            { "name": "user_id", "type": "uuid", "note": "FK -> User" },
+            { "name": "org_id", "type": "uuid", "note": "FK -> Organization" },
+            { "name": "role", "type": "enum", "note": "e.g. 'buyer_admin', 'buyer_purchaser', 'supplier_admin', 'supplier_fulfiller', 'ops_admin'" },
+            { "name": "status", "type": "enum", "note": "'active' | 'revoked'" }
+          ],
+          "relations": [
+            "Many Memberships per User (a user may belong to several orgs)",
+            "UNIQUE (user_id, org_id) — one membership per user per org"
+          ]
+        },
+        {
+          "name": "Sku",
+          "description": "The sellable unit. Belongs to exactly one supplier Organization — this ownership is what drives the per-supplier Order split.",
+          "fields": [
+            { "name": "id", "type": "uuid" },
+            { "name": "product_id", "type": "uuid", "note": "FK -> Product" },
+            { "name": "supplier_org_id", "type": "uuid", "note": "FK -> Organization(org_type='supplier')" },
+            { "name": "sku_code", "type": "text", "note": "UNIQUE per supplier" },
+            { "name": "uom", "type": "text", "note": "unit of measure, e.g. CASE/EA" },
+            { "name": "version", "type": "bigint", "note": "monotonic; used as the per-SKU version guard in the OpenSearch projection" }
+          ],
+          "relations": [
+            "Many Skus per Product",
+            "1 Sku has many InventoryItems (one per location/DC)",
+            "Referenced by CartItem, OrderLine, StockReservation"
+          ]
+        },
+        {
+          "name": "ContractPrice",
+          "description": "Buyer-specific negotiated price for a Sku, overriding the supplier's PriceList. Resolved during pricing snapshot at placement and re-checked at supplier confirm.",
+          "fields": [
+            { "name": "id", "type": "uuid" },
+            { "name": "buyer_org_id", "type": "uuid", "note": "FK -> Organization(org_type='buyer')" },
+            { "name": "sku_id", "type": "uuid", "note": "FK -> Sku" },
+            { "name": "unit_price_krw", "type": "bigint", "note": "integer KRW; no minor units" },
+            { "name": "valid_from", "type": "timestamptz" },
+            { "name": "valid_to", "type": "timestamptz", "note": "nullable; open-ended contracts" }
+          ],
+          "relations": [
+            "Falls back to PriceList when no active ContractPrice exists for (buyer, sku)",
+            "Resolved value is snapshotted onto OrderLine.unit_price_krw"
+          ]
+        },
+        {
+          "name": "Order",
+          "description": "Buyer-level header. Intentionally thin: its status is DERIVED from the statuses of its FulfillmentGroups, not stored as the source of truth.",
+          "fields": [
+            { "name": "id", "type": "uuid" },
+            { "name": "buyer_org_id", "type": "uuid", "note": "FK -> Organization" },
+            { "name": "placed_by_user_id", "type": "uuid", "note": "FK -> User" },
+            { "name": "status", "type": "enum", "note": "DRAFT -> PLACED -> derived PARTIALLY_* / COMPLETED / CANCELLED" },
+            { "name": "placed_at", "type": "timestamptz", "note": "null while DRAFT (cart)" },
+            { "name": "total_krw", "type": "bigint", "note": "sum of snapshotted OrderLine extended amounts" }
+          ],
+          "relations": [
+            "1 Order is SPLIT into many FulfillmentGroups (one per distinct supplier in the cart)",
+            "Order has no direct OrderLines — lines hang off FulfillmentGroups"
+          ]
+        },
+        {
+          "name": "FulfillmentGroup",
+          "description": "THE SPINE. The per-supplier sub-order that suppliers actually act on; the unit of inventory reservation, shipment, and settlement.",
+          "fields": [
+            { "name": "id", "type": "uuid" },
+            { "name": "order_id", "type": "uuid", "note": "FK -> Order" },
+            { "name": "supplier_org_id", "type": "uuid", "note": "FK -> Organization(org_type='supplier')" },
+            { "name": "status", "type": "enum", "note": "AWAITING_SUPPLIER -> ACCEPTED -> FULFILLING -> SHIPPED -> DELIVERED -> SETTLED; branches REJECTED, CANCELLED, PARTIALLY_SHIPPED" },
+            { "name": "subtotal_krw", "type": "bigint", "note": "supplier-scoped subtotal, integer KRW" },
+            { "name": "accepted_at", "type": "timestamptz", "note": "null until supplier accepts; re-price/validate happens here" }
+          ],
+          "relations": [
+            "Many FulfillmentGroups per Order; UNIQUE (order_id, supplier_org_id)",
+            "1 FulfillmentGroup has many OrderLines",
+            "1 FulfillmentGroup has many Shipments and at most one Settlement"
+          ]
+        },
+        {
+          "name": "OrderLine",
+          "description": "A single line of demand. Belongs to exactly one FulfillmentGroup. Carries the immutable price snapshot.",
+          "fields": [
+            { "name": "id", "type": "uuid" },
+            { "name": "fulfillment_group_id", "type": "uuid", "note": "FK -> FulfillmentGroup (NOT NULL; never points at Order directly)" },
+            { "name": "sku_id", "type": "uuid", "note": "FK -> Sku" },
+            { "name": "qty", "type": "integer", "note": "CHECK (qty > 0)" },
+            { "name": "unit_price_krw", "type": "bigint", "note": "SNAPSHOTTED at placement; immutable thereafter" },
+            { "name": "line_total_krw", "type": "bigint", "note": "integer math: qty * unit_price_krw" }
+          ],
+          "relations": [
+            "Exactly one FulfillmentGroup per OrderLine",
+            "References one Sku; mirrors to ShipmentLine when shipped"
+          ]
+        },
+        {
+          "name": "InventoryItem",
+          "description": "Authoritative stock per Sku per location/DC. The database — not the app — is the source of truth for availability.",
+          "fields": [
+            { "name": "id", "type": "uuid" },
+            { "name": "sku_id", "type": "uuid", "note": "FK -> Sku" },
+            { "name": "location_id", "type": "uuid", "note": "DC / warehouse" },
+            { "name": "available", "type": "integer", "note": "CHECK (available >= 0) — guarantees no oversell at the DB" },
+            { "name": "version", "type": "bigint", "note": "optimistic-lock version; bumped under SELECT ... FOR UPDATE on confirm" }
+          ],
+          "relations": [
+            "UNIQUE (sku_id, location_id)",
+            "Decremented atomically when a StockReservation is confirmed at allocation"
+          ]
+        },
+        {
+          "name": "StockReservation",
+          "description": "Two-phase hold. Phase 1 is a Redis soft-hold with TTL at checkout; phase 2 is this confirmed Postgres row, written under a row lock at supplier accept/allocation.",
+          "fields": [
+            { "name": "id", "type": "uuid" },
+            { "name": "sku_id", "type": "uuid", "note": "FK -> Sku" },
+            { "name": "fulfillment_group_id", "type": "uuid", "note": "FK -> FulfillmentGroup" },
+            { "name": "qty", "type": "integer", "note": "CHECK (qty > 0)" },
+            { "name": "status", "type": "enum", "note": "'soft' (Redis TTL) | 'confirmed' (Postgres) | 'expired'" },
+            { "name": "expires_at", "type": "timestamptz", "note": "swept by a reservation-expiry job; partial UNIQUE on active reservations" }
+          ],
+          "relations": [
+            "Confirms against an InventoryItem under SELECT ... FOR UPDATE",
+            "Locks acquired in sku_id order to prevent deadlocks on multi-line orders"
+          ]
+        },
+        {
+          "name": "Shipment",
+          "description": "A physical dispatch against a FulfillmentGroup. One group may split into several Shipments by DC and by partial availability.",
+          "fields": [
+            { "name": "id", "type": "uuid" },
+            { "name": "fulfillment_group_id", "type": "uuid", "note": "FK -> FulfillmentGroup" },
+            { "name": "carrier_id", "type": "uuid", "note": "FK -> Carrier; handed off via a per-carrier adapter" },
+            { "name": "status", "type": "enum", "note": "CREATED -> ALLOCATED -> PICKING -> PACKED -> DISPATCHED -> IN_TRANSIT -> DELIVERED; branches EXCEPTION, RETURNED" },
+            { "name": "tracking_no", "type": "text", "note": "carrier reference; TrackingEvents ingested via webhook" },
+            { "name": "proof_of_delivery_s3_key", "type": "text", "note": "photo/signature stored in S3 on DELIVERED" }
+          ],
+          "relations": [
+            "Many Shipments per FulfillmentGroup",
+            "1 Shipment has many ShipmentLines and TrackingEvents, at most one ProofOfDelivery"
+          ]
+        },
+        {
+          "name": "SupplierApplication",
+          "description": "Drives the maker-checker onboarding workflow. Every state change is recorded append-only as an ApprovalDecision.",
+          "fields": [
+            { "name": "id", "type": "uuid" },
+            { "name": "org_id", "type": "uuid", "note": "FK -> Organization(org_type='supplier')" },
+            { "name": "status", "type": "enum", "note": "APPLIED -> DOCS_SUBMITTED -> AUTOMATED_CHECKS -> RISK_REVIEW -> COMPLIANCE_APPROVAL -> CATALOG_ONBOARDING -> ACTIVATED; branches INFO_REQUESTED, REJECTED" },
+            { "name": "risk_reviewer_id", "type": "uuid", "note": "the 'maker'" },
+            { "name": "compliance_reviewer_id", "type": "uuid", "note": "the 'checker' — enforced distinct from risk_reviewer_id" }
+          ],
+          "relations": [
+            "1 SupplierApplication has many ApprovalTasks and append-only ApprovalDecisions",
+            "On ACTIVATED, sets up the supplier's PriceList and initial Skus"
+          ]
+        },
+        {
+          "name": "Settlement",
+          "description": "Computed once per delivered FulfillmentGroup. Fees and rounding applied here; posts double-entry LedgerEntries and a Payout.",
+          "fields": [
+            { "name": "id", "type": "uuid" },
+            { "name": "fulfillment_group_id", "type": "uuid", "note": "FK -> FulfillmentGroup; UNIQUE (one settlement per group)" },
+            { "name": "supplier_org_id", "type": "uuid", "note": "FK -> Organization" },
+            { "name": "gross_krw", "type": "bigint", "note": "sum of delivered OrderLine snapshots" },
+            { "name": "fee_krw", "type": "bigint", "note": "rounding applied ONLY here, per the single documented rule" },
+            { "name": "net_payout_krw", "type": "bigint", "note": "gross_krw - fee_krw; settled on KST business-day cutoffs" }
+          ],
+          "relations": [
+            "Exactly one Settlement per FulfillmentGroup (UNIQUE)",
+            "1 Settlement produces many LedgerEntries and one Payout"
+          ]
+        },
+        {
+          "name": "LedgerEntry",
+          "description": "Append-only, double-entry accounting line. Never updated or deleted — corrections are new reversing entries.",
+          "fields": [
+            { "name": "id", "type": "uuid" },
+            { "name": "fulfillment_group_id", "type": "uuid", "note": "FK -> FulfillmentGroup" },
+            { "name": "entry_type", "type": "enum", "note": "e.g. 'gross', 'fee', 'payout'" },
+            { "name": "direction", "type": "enum", "note": "'debit' | 'credit'" },
+            { "name": "amount_krw", "type": "bigint", "note": "integer KRW" },
+            { "name": "created_at", "type": "timestamptz", "note": "immutable; no UPDATE/DELETE" }
+          ],
+          "relations": [
+            "UNIQUE (fulfillment_group_id, entry_type) — guards against double settlement",
+            "Many LedgerEntries per Settlement"
+          ]
+        },
+        {
+          "name": "OutboxEvent",
+          "description": "Written in the same DB transaction as the state change it describes, then relayed to SQS/SNS. The backbone of all async work; idempotent consumers dedup on it.",
+          "fields": [
+            { "name": "id", "type": "uuid" },
+            { "name": "event_type", "type": "text", "note": "e.g. 'OrderPlaced', 'ShipmentDelivered'" },
+            { "name": "aggregate_id", "type": "uuid", "note": "e.g. the FulfillmentGroup or Order id" },
+            { "name": "payload", "type": "jsonb" },
+            { "name": "published_at", "type": "timestamptz", "note": "null until the relay publishes to SQS" },
+            { "name": "dedup_key", "type": "text", "note": "drives idempotent consumers; e.g. (event_type, external_id)" }
+          ],
+          "relations": [
+            "Written atomically with the aggregate change (no dual writes)",
+            "Consumed by search-projection, settlement, and notifications workers"
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "callout",
+      "tone": "insight",
+      "title": "Why FulfillmentGroup is the spine",
+      "body": "The buyer-level Order is a derived view; the FulfillmentGroup is the real aggregate. Suppliers accept/reject it, inventory reserves per its lines, Shipments and Settlements key off it, and RBAC scopes to it. Because a Sku always belongs to exactly one supplier Organization, the Cart-to-FulfillmentGroup split is a mechanical group-by on sku.supplier_org_id rather than a heuristic. Modeling this split on day one — instead of bolting per-supplier logic onto a flat Order later — is the decision I would make first again."
+    },
+    {
+      "kind": "bullets",
+      "items": [
+        "An OrderLine belongs to exactly one FulfillmentGroup and never references the Order directly; the Order is just the buyer-level header.",
+        "An Order is SPLIT into exactly one FulfillmentGroup per distinct supplier (UNIQUE (order_id, supplier_org_id)); a Sku belongs to exactly one supplier, so the split is deterministic.",
+        "Order.status is DERIVED from its FulfillmentGroups' statuses — it is never the authoritative source of truth.",
+        "OrderLine.unit_price_krw is snapshotted at placement from the resolved ContractPrice/PriceList and is immutable; search is never authoritative for money — checkout always re-prices from Postgres.",
+        "All money is integer KRW stored as bigint; rounding is applied only at fee calculation in Settlement, per a single documented rule.",
+        "InventoryItem.available can never go negative (CHECK (available >= 0)); availability is authoritative at the database, reserved via Redis soft-hold then confirmed under SELECT ... FOR UPDATE.",
+        "Reservation locks are acquired in sku_id order to give consistent lock ordering and avoid deadlocks on multi-line orders.",
+        "Exactly one Settlement per FulfillmentGroup, and LedgerEntry is UNIQUE per (fulfillment_group_id, entry_type) — these constraints make double settlement impossible.",
+        "LedgerEntry and ApprovalDecision are append-only: no UPDATE or DELETE; corrections are new reversing/decision rows.",
+        "OutboxEvent is written in the same transaction as the change it describes (no dual writes); consumers are idempotent and dedup on its key.",
+        "Maker-checker is structurally enforced: a SupplierApplication's compliance_reviewer_id (checker) must differ from its risk_reviewer_id (maker).",
+        "Every tenant-scoped row carries org_id and is filtered by row-level scoping, so a buyer or supplier can only ever see its own data."
+      ]
+    }
+  ]
+}

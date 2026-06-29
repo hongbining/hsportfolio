@@ -1,0 +1,58 @@
+{
+  "id": "lessons-learned",
+  "title": "Lessons Learned",
+  "summary": "The earned lessons from building KH Wholesale as a six-person team: where the up-front modeling decisions paid for themselves, where incidents taught us that idempotency and database-authoritative invariants are design concerns rather than patches, and what we would and would not repeat.",
+  "blocks": [
+    {
+      "kind": "lead",
+      "text": "Most of what mattered on KH Wholesale was decided in the data model and the transaction boundaries, not in the framework choices — and the incidents that hurt were the ones where we had treated a design concern as something we could bolt on later."
+    },
+    {
+      "kind": "prose",
+      "paragraphs": [
+        "We built KH Wholesale over roughly fourteen months with six engineers, growing it to ~5,200 active buyers, ~480 active suppliers, ~140,000 SKUs, peak ~9,000 orders/day, and ~38B KRW/month in GMV. The lessons below are not abstractions; each one is something we either got right early and were grateful for, or got wrong once in production and paid to fix. They are ordered roughly by how much leverage they gave us.",
+        "The through-line: in a managed B2B marketplace, correctness is the product. Buyers extend credit, suppliers expect to be paid the exact amount on the exact day, and a single oversell or double settlement erodes trust faster than any latency win earns it back. We optimized for invariants we could prove at the database, and for being able to reason about the system with six people on call."
+      ]
+    },
+    {
+      "kind": "numbered",
+      "items": [
+        "Model the per-supplier split early. The single highest-leverage decision was making FulfillmentGroup — the per-supplier sub-order carved out of a multi-supplier Cart at placement — the spine of ordering, fulfillment, and settlement. Because suppliers accept, ship, and get paid at the group level, and Order status is derived from its groups, we never had to retrofit partial states. The PARTIALLY_SHIPPED and PARTIALLY_* derivations fell out naturally instead of becoming a special case bolted onto a buyer-level order.",
+        "Make money explicit: integer KRW, snapshotted, with one documented rounding rule. All amounts are bigint won with no minor units, prices are snapshotted immutably onto OrderLine at placement, and money math is integer-only with rounding applied only at fee calculation. This wasn't theoretical hygiene — incident (F) was statement mismatches from KST/UTC day boundaries and ad-hoc rounding, and the fix was exactly this discipline plus settling on KST business-day cutoffs. Floating-point money would have generated disputes indefinitely.",
+        "Make state machines table-driven and DB-enforced. The FulfillmentGroup (AWAITING_SUPPLIER → ACCEPTED → FULFILLING → SHIPPED → DELIVERED → SETTLED, plus REJECTED/CANCELLED/PARTIALLY_SHIPPED) and Shipment (CREATED → ALLOCATED → PICKING → PACKED → DISPATCHED → IN_TRANSIT → DELIVERED, plus EXCEPTION/RETURNED) machines are explicit tables with enforced transitions, not status strings sprinkled across handlers. Illegal transitions are rejected at the database, so a bug in one module cannot push an aggregate into a state another module can't reason about.",
+        "Treat idempotency as a design concern, not a patch. Three of our worst incidents were the same shape: a retry that ran an effect twice. The carrier webhook retried ShipmentDelivered and we settled twice (B); SQS visibility-timeout expiry reprocessed messages and double-fired notifications (E). The durable fix was structural — idempotency keys on (event_type, external_id), a processed-events dedup table, idempotent SQS handlers keyed by message dedup id, and a UNIQUE constraint on LedgerEntry per (group, type) so the database refuses a second write even if the application logic slips. Idempotency designed in is cheap; retrofitted under a double-settlement incident is not.",
+        "Reserve inventory at the database, not in the application. We use a two-phase model — a Redis soft-hold with TTL at checkout, then a hard-confirm in Postgres — but the authoritative invariant lives in the database. We learned this the hard way: incident (A) was overselling the last units of a hot SKU from a check-then-write race across separate statements. The fix was SELECT ... FOR UPDATE on the InventoryItem row inside the confirm transaction, a partial unique constraint on active reservations, and CHECK (available >= 0). Redis is a fast hint; Postgres is the truth. Oversell incidents went from ~12/month to 0.",
+        "Prefer the transactional outbox over dual writes. We persist the Order and its OutboxEvent in one DB transaction and let idempotent SQS consumers project from there, rather than writing to the DB and publishing to a broker in two separate steps that can partially fail. The cost is honest — an extra table and the app has to publish — but we never lost or phantom-emitted an event, and we never had to debug the classic dual-write divergence. We chose outbox over CDC for the same reason: it stays inside the transaction we already control.",
+        "Add a read model only once the read actually needs one. Catalog search runs on OpenSearch, kept eventually-consistent from the outbox with a monotonic per-SKU version guard that drops stale/out-of-order events. We deliberately did not make search authoritative for anything that matters: incident (C) was stale prices in search from projection lag, and the real fix was the rule that checkout always re-prices from Postgres. Search is a denormalized convenience; it earned its complexity only because search p95 genuinely needed it (~480ms → 110ms), and never owns money.",
+        "Maker-checker plus an append-only audit log pays for itself in B2B. Supplier onboarding enforces separation between the RISK_REVIEW maker and the COMPLIANCE_APPROVAL checker, with every step recorded as an append-only ApprovalDecision and double-entry LedgerEntry kept append-only on the settlement side. In a domain where you onboard businesses, validate registrations against the NTS gov API, and move money, being able to reconstruct exactly who decided what and when is not optional. It also let us compress onboarding from 18 business days to 4 without losing the audit trail.",
+        "Consistent lock ordering and bounded retries are not optional under concurrency. Incident (D) was deadlocks (40P01) on multi-line orders that locked SKU rows in different orders. The fix — always acquire reservation locks sorted by sku_id and add a bounded retry on deadlock — is a one-time design rule that quietly prevents a whole class of production pages. Concurrency correctness is cheaper as a convention than as a forensic exercise.",
+        "Boring tech scaled comfortably to this size. A Postgres-backed modular monolith on ECS Fargate with a handful of async workers carried 9,000 orders/day at peak with headroom, hit storefront p95 < 300ms and search p95 ~110ms, and kept on-call pages low enough for six people. We never needed microservices to hit our SLAs; we needed module discipline and transactional integrity. The leverage came from the data model and the invariants, not from operational complexity we could have inflicted on ourselves."
+      ]
+    },
+    {
+      "kind": "stats",
+      "metrics": [
+        { "label": "Oversell incidents", "value": "0 / month", "delta": "from ~12 / month", "note": "DB-authoritative reservation: FOR UPDATE + CHECK (available >= 0)" },
+        { "label": "Order-placement error rate", "value": "0.1%", "delta": "from 2.3%", "note": "Re-price/validate at confirm; explicit state machine" },
+        { "label": "Checkout p95", "value": "240ms", "delta": "from 820ms", "note": "Synchronous credit check kept, hot paths tightened" },
+        { "label": "Catalog search p95", "value": "110ms", "delta": "from ~480ms", "note": "OpenSearch read model, added only when needed" },
+        { "label": "Supplier onboarding", "value": "4 business days", "delta": "from 18 business days", "note": "Maker-checker workflow + automated checks" },
+        { "label": "Settlement disputes", "value": "down ~70%", "note": "Integer KRW, one rounding rule, KST cutoffs, ledger dedup" },
+        { "label": "On-call pages", "value": "roughly halved", "note": "Idempotent handlers, DLQ + alarms, deadlock retries" }
+      ]
+    },
+    {
+      "kind": "prose",
+      "paragraphs": [
+        "What I would do exactly the same: model the FulfillmentGroup split on day one, make money integer and snapshotted from the first OrderLine, write the state machines as enforced tables before writing any handler that touches them, and keep the outbox as the single way effects leave a transaction. I would also keep the modular monolith — for a six-person team the operational simplicity and transactional integrity were worth far more than independent deployability we did not need. And I would re-make the call to keep the credit check synchronous at checkout; the added latency was real but bounded, and the alternative — a buyer discovering after placement that their order can't be funded — is worse than 240ms.",
+        "What I would do differently: I would design idempotency in from the first async consumer rather than learning it from a double-settlement incident — the dedup tables, idempotency keys, and ledger UNIQUE constraints should have been the default skeleton of every handler, not a retrofit. I would set lock ordering by sku_id and the deadlock retry as a written convention before the first multi-line order shipped, not after the first 40P01 page. And I would invest earlier in the reservation-expiry sweeper and DLQ alarms; both were obvious in hindsight and both cost us a bad week before they existed. The pattern is consistent: every incident we hit was a known failure mode we had postponed, never a genuine surprise."
+      ]
+    },
+    {
+      "kind": "callout",
+      "tone": "insight",
+      "title": "The single most important takeaway",
+      "body": "Push every invariant that protects money or inventory down to the database, and make every effect idempotent at the point it crosses a transaction or queue boundary. Redis holds, search projections, and application logic are all fallible hints; correctness has to be something Postgres can refuse to violate — a FOR UPDATE row lock, a CHECK (available >= 0), a UNIQUE LedgerEntry per (group, type). Get those two things right and a boring Postgres-backed modular monolith will carry a real B2B marketplace further than any amount of architectural ambition."
+    }
+  ]
+}

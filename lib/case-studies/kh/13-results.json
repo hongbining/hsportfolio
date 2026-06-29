@@ -1,0 +1,128 @@
+{
+  "id": "results",
+  "title": "Results",
+  "summary": "The architecture paid off where it mattered: correctness went to zero-defect on the money-and-inventory path, latency on the buyer-facing surfaces dropped to well under target, and supplier onboarding went from weeks to days. Each number traces back to a specific, deliberate decision rather than a generic 'we optimized things' story.",
+  "blocks": [
+    {
+      "kind": "lead",
+      "text": "Every headline number below maps to a named decision or a specific incident fix — the correctness wins came from database-authoritative constraints and idempotency, the latency wins from the read model plus checkout re-pricing, and the onboarding win from automating the maker-checker workflow."
+    },
+    {
+      "kind": "stats",
+      "metrics": [
+        {
+          "label": "Oversell incidents",
+          "value": "0 / month",
+          "delta": "from ~12 / month",
+          "note": "Eliminated by SELECT ... FOR UPDATE on InventoryItem in the confirm transaction, a partial-unique constraint on active reservations, and CHECK (available >= 0)."
+        },
+        {
+          "label": "Order-placement error rate",
+          "value": "0.1%",
+          "delta": "from 2.3%",
+          "note": "Driven by the two-phase reservation, consistent sku_id lock ordering with bounded 40P01 retry, and idempotent placement."
+        },
+        {
+          "label": "Checkout p95",
+          "value": "240ms",
+          "delta": "from 820ms",
+          "note": "Under the < 300ms storefront target. Came from the OpenSearch read model offloading reads and a lean synchronous re-price/credit-check at checkout."
+        },
+        {
+          "label": "Catalog search p95",
+          "value": "110ms",
+          "delta": "from ~480ms",
+          "note": "Under the < 120ms search target. OpenSearch read model fed by the outbox with per-SKU version guards."
+        },
+        {
+          "label": "Supplier onboarding",
+          "value": "4 business days",
+          "delta": "from 18 business days",
+          "note": "Inside the < 5 business-day SLA. Automated checks (NTS business-registration validation, bank verification, duplicate detection) plus a table-driven maker-checker workflow."
+        },
+        {
+          "label": "Settlement disputes",
+          "value": "-70%",
+          "delta": "vs. baseline",
+          "note": "Integer KRW math, a single documented rounding rule applied only at fee calc, KST business-day cutoffs, and idempotent settlement."
+        },
+        {
+          "label": "Sustained peak",
+          "value": "9,000 orders/day",
+          "delta": "with headroom",
+          "note": "Carried on a single Postgres-backed modular monolith plus a small set of async workers."
+        },
+        {
+          "label": "On-call pages",
+          "value": "~halved",
+          "delta": "vs. baseline",
+          "note": "Fewer correctness incidents, a DLQ with alarms, and idempotent handlers removed most redelivery-driven noise."
+        }
+      ]
+    },
+    {
+      "kind": "prose",
+      "paragraphs": [
+        "The correctness numbers are the ones I am proudest of, because they went to actual zero and stayed there. Overselling was ~12 incidents/month at the worst, and every one was the same shape: a check-then-write race where two orders read the same available count and both reserved the last units. We did not fix that with retries or alerting — we fixed it by making the database authoritative. The hard-confirm path now does SELECT ... FOR UPDATE on the InventoryItem row inside the confirm transaction, there is a partial-unique constraint that prevents two active StockReservations from colliding, and a CHECK (available >= 0) makes an oversell physically unrepresentable. After that constraint shipped, the failure mode could not occur; the number is zero because the schema forbids it, not because we got lucky.",
+        "The order-placement error rate (2.3% → 0.1%) is the same theme one level up. A large share of those errors were deadlocks on multi-line orders — concurrent carts locking SKU rows in different orders (Postgres 40P01) — and stale-price rejections at confirm. We acquire reservation locks sorted by sku_id so lock ordering is always consistent, wrapped in a bounded retry on 40P01, and we re-price/validate at confirm so a stale price is caught deterministically instead of surfacing as a random failure. The residual 0.1% is mostly legitimate rejections (credit limit, genuinely sold-out lines), which is exactly what an error rate should contain.",
+        "The latency wins came from two structural choices, not micro-tuning. Catalog search dropping from ~480ms to 110ms p95 is the OpenSearch read model doing its job: search reads never touch the transactional Postgres path, and the projection is kept eventually-consistent through the outbox with a monotonic per-SKU version guard that drops out-of-order events. Checkout p95 (820ms → 240ms) benefited from the same read-model offloading, but the important design constraint is that checkout never trusts search for money — it always re-prices from Postgres against ContractPrice/PriceList. That keeps the fast read path and the authoritative money path cleanly separated: search is allowed to be slightly stale, checkout is never wrong.",
+        "Supplier onboarding going from 18 to 4 business days is a workflow result, not an infrastructure one. The old process was manual end to end; the new SupplierApplication state machine front-loads AUTOMATED_CHECKS (NTS business-registration validation, bank-account verification, duplicate-supplier detection) so a reviewer only ever looks at applications that already passed the deterministic gates. The maker-checker split (RISK_REVIEW by the maker, COMPLIANCE_APPROVAL by a different checker) is enforced in the model and every transition writes an append-only ApprovalDecision, so the speed-up did not cost us auditability — it improved it.",
+        "Settlement disputes falling ~70% and on-call pages roughly halving are the payoff for treating idempotency as a design concern rather than a patch. Double settlement used to happen when a carrier webhook retried ShipmentDelivered and settlement ran twice; we keyed idempotency on (event_type, external_id), added a processed-events dedup table, and put a UNIQUE constraint on LedgerEntry per (group, type) so a duplicate payout cannot be written even if a handler runs twice. Combined with integer KRW math, one documented rounding rule applied only at fee calculation, and KST business-day cutoffs, the statement mismatches that drove disputes mostly disappeared. The same idempotency discipline plus a dead-letter queue with alarms is why SQS redelivery stopped generating duplicate-effect pages."
+      ]
+    },
+    {
+      "kind": "table",
+      "caption": "Each result mapped to the specific decision or incident fix that produced it.",
+      "columns": ["Result", "Before → After", "What drove it"],
+      "rows": [
+        [
+          "Oversell incidents",
+          "~12/mo → 0",
+          "DB-authoritative reservation: SELECT ... FOR UPDATE on InventoryItem in the confirm tx, partial-unique constraint on active reservations, CHECK (available >= 0), reservation-expiry sweeping (Incident A)."
+        ],
+        [
+          "Order-placement error rate",
+          "2.3% → 0.1%",
+          "Two-phase soft-hold then hard-confirm, consistent lock ordering by sku_id with bounded 40P01 retry (Incident D), re-price/validate at confirm, idempotent placement."
+        ],
+        [
+          "Checkout p95",
+          "820ms → 240ms",
+          "Read-model offloading of catalog reads plus a lean synchronous credit check and Postgres re-price at checkout; money path kept off the search path."
+        ],
+        [
+          "Catalog search p95",
+          "~480ms → 110ms",
+          "OpenSearch read model fed by the transactional outbox with monotonic per-SKU version guards that drop stale/out-of-order events (Incident C)."
+        ],
+        [
+          "Supplier onboarding",
+          "18 days → 4 days",
+          "AUTOMATED_CHECKS (NTS business-registration validation, bank verification, duplicate detection) front-loaded before a table-driven maker-checker review."
+        ],
+        [
+          "Settlement disputes",
+          "−~70%",
+          "Idempotency key on (event_type, external_id) + dedup table + UNIQUE LedgerEntry per (group, type) (Incident B); integer KRW, one rounding rule, KST cutoffs (Incident F)."
+        ],
+        [
+          "Sustained peak / on-call",
+          "9k orders/day; pages ~halved",
+          "Modular monolith with transactional integrity; idempotent SQS consumers + DLQ with alarms removed redelivery side effects (Incident E)."
+        ]
+      ]
+    },
+    {
+      "kind": "callout",
+      "tone": "insight",
+      "title": "Why the correctness numbers are zero, not 'low'",
+      "body": "Oversell and double-settlement did not trend toward zero through monitoring and reaction — they hit zero because we pushed the invariant into the database where it cannot be violated: CHECK (available >= 0) and partial-unique constraints on reservations make overselling unrepresentable, and a UNIQUE LedgerEntry per (group, type) makes a duplicate payout a constraint violation rather than a silent double-pay. When the database is the authority for the invariant, the metric stops being a function of how careful the application code is."
+    },
+    {
+      "kind": "callout",
+      "tone": "note",
+      "title": "Boring tech, comfortable headroom",
+      "body": "All of this ran on one PostgreSQL 15 database and a single modular-monolith deployable plus four small workers, serving ~5,200 active buyers, ~480 suppliers, and ~140,000 SKUs at ~38B KRW/month GMV. The 9,000 orders/day peak was carried with headroom — a useful data point that a disciplined Postgres-backed monolith scales further than the microservices-by-default instinct assumes for a 6-person team."
+    }
+  ]
+}

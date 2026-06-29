@@ -1,0 +1,75 @@
+{
+  "id": "business-context",
+  "title": "Business Context",
+  "summary": "KH Wholesale is a managed B2B wholesale marketplace for food and grocery, where one buyer cart fans out across many independent suppliers and KH owns the catalog, ordering, fulfillment, credit, and supplier payouts end to end.",
+  "blocks": [
+    {
+      "kind": "lead",
+      "text": "KH Wholesale is a managed B2B marketplace that lets an independent retailer fill a single cart from hundreds of suppliers at once, while KH orchestrates pricing, inventory, delivery, credit, and settlement behind that one order."
+    },
+    {
+      "kind": "prose",
+      "paragraphs": [
+        "KH Wholesale sits between two sides of the food and grocery (FMCG) supply chain. On the demand side are independent retail buyers — restaurants, cafes, convenience stores, and small grocers — who individually are too small to negotiate directly with manufacturers and who want one place to source everything they stock. On the supply side are suppliers — manufacturers, distributors, and farms — who want reach into thousands of small retail accounts without building their own sales, credit, and last-mile operation. KH is the operator in the middle: we run the catalog, the ordering experience, fulfillment coordination, last-mile delivery (through 3PL carriers and a few of our own distribution centers), supplier payouts, and the credit terms extended to buyers.",
+        "The defining product decision is that a buyer places one cart that spans multiple suppliers. A cafe owner does not want to place six separate orders for milk, beans, pastries, cups, cleaning supplies, and produce — they want one cart, one checkout, one delivery experience, and one place to chase if something is wrong. But each of those line items belongs to a different supplier with its own inventory, its own contract prices, its own acceptance decision, and its own shipment. So the single cart the buyer sees is, underneath, an orchestration problem: KH must split that order cleanly per supplier, hold inventory across all of them, snapshot the right negotiated price for this specific buyer, run one credit check against the buyer's organization, and then track each supplier's sub-order independently through acceptance, shipment, delivery, and payout.",
+        "This is a managed marketplace, not a listing site, and that distinction is where the commercial stakes live. KH carries real financial responsibility on both sides of every transaction. We extend credit terms to buyers, which means KH is exposed if a buyer's outstanding balance exceeds their limit at the moment of checkout — so the credit check is synchronous and authoritative at placement, not an after-the-fact reconciliation. On the other side, KH owes accurate, auditable payouts to suppliers based on what was actually delivered, net of fees, settled on KST business-day cutoffs. With GMV around 38B KRW per month flowing through the platform, an error in how an order splits, how a price is snapshotted, how inventory is reserved, or how a delivery maps to a payout is not a cosmetic bug — it is a money bug, and money bugs in a marketplace become disputes, chargebacks, and lost supplier trust."
+      ]
+    },
+    {
+      "kind": "stats",
+      "metrics": [
+        { "label": "Active buyers", "value": "~5,200", "note": "Independent retailers: restaurants, cafes, convenience stores, small grocers." },
+        { "label": "Active suppliers", "value": "~480", "note": "Manufacturers, distributors, and farms." },
+        { "label": "SKUs in catalog", "value": "~140,000", "note": "Sellable units, each belonging to a single supplier." },
+        { "label": "Peak orders/day", "value": "~9,000", "note": "Buyer-level orders, each splitting into one or more per-supplier fulfillment groups." },
+        { "label": "GMV", "value": "~38B KRW/month", "note": "Gross merchandise value flowing through the managed marketplace." },
+        { "label": "Storefront p95", "value": "< 300ms", "note": "Latency target for the buyer storefront." },
+        { "label": "Catalog search p95", "value": "< 120ms", "note": "Latency target for catalog search, served from the OpenSearch read model." }
+      ]
+    },
+    {
+      "kind": "prose",
+      "paragraphs": [
+        "The scale matters less for raw throughput than for what it implies about correctness under concurrency. At 140,000 SKUs and ~9,000 orders/day, popular SKUs become contention hotspots: multiple buyers race for the last units of the same fast-moving product within the same second. At ~480 suppliers, a single peak-hour buyer cart can fan out into a dozen independent sub-orders, each of which must be priced, reserved, accepted, shipped, and settled on its own timeline without ever double-counting inventory or money. The platform is not large by consumer-internet standards, but every transaction touches inventory and ledger state, so the engineering bar is correctness-first rather than scale-first."
+      ]
+    },
+    {
+      "kind": "definitions",
+      "definitions": [
+        {
+          "term": "Buyer (Organization, org_type = buyer)",
+          "description": "An independent retailer — restaurant, cafe, convenience store, or small grocer. Needs a single multi-supplier cart, buyer-specific negotiated prices (ContractPrice), credit terms so they can order before paying, reliable last-mile delivery, and one place to handle exceptions across all suppliers in an order."
+        },
+        {
+          "term": "Supplier (Organization, org_type = supplier)",
+          "description": "A manufacturer, distributor, or farm that sells SKUs through KH. Needs reach into thousands of small accounts, control over which sub-orders (FulfillmentGroups) it accepts or rejects, accurate inventory and reservation handling, and trustworthy, auditable payouts settled net of fees on a predictable cutoff."
+        },
+        {
+          "term": "KH (marketplace operator)",
+          "description": "Owns the catalog, ordering orchestration, fulfillment coordination, last-mile delivery via 3PL carriers and its own DCs, settlement and payouts to suppliers, and the credit extended to buyers. Carries financial exposure on both sides, so it must guarantee money and inventory correctness end to end."
+        },
+        {
+          "term": "3PL Carrier",
+          "description": "Third-party logistics provider that executes physical delivery. Integrated through a per-carrier adapter and emits TrackingEvents into KH via webhook, culminating in DELIVERED plus a captured ProofOfDelivery."
+        },
+        {
+          "term": "Distribution Center (DC)",
+          "description": "One of KH's own facilities. Inventory lives per Sku per location, and a single FulfillmentGroup may split into multiple Shipments by DC and by partial availability."
+        }
+      ]
+    },
+    {
+      "kind": "prose",
+      "paragraphs": [
+        "Putting the two sides together produces the core engineering challenge that everything else in this case study exists to solve: how do you let a buyer place one logical order, with one price snapshot, one credit decision, and one inventory hold, when that order is physically executed by many independent suppliers who each accept, ship, and get paid separately — and do it without ever overselling a SKU, mispricing a line, or paying a supplier twice?",
+        "The answer we converged on is to make the per-supplier split a first-class concept from the start. When an Order is placed, it splits into one FulfillmentGroup per supplier, and the FulfillmentGroup — not the Order — becomes the unit that suppliers act on and the spine that ordering, fulfillment, and settlement all hang from. The Order's status is derived from the states of its FulfillmentGroups rather than tracked independently, so a buyer-facing order can be PARTIALLY_SHIPPED or COMPLETED as a faithful rollup of what each supplier actually did. Money is snapshotted onto each OrderLine at placement and never recomputed, inventory is reserved at the database rather than trusted from a cache, and settlement keys off delivered shipments with idempotent, append-only ledger entries. The rest of this whitepaper is the story of building that orchestration correctly: the FulfillmentGroup split model, two-phase inventory reservation, integer-KRW money with immutable price snapshots, an outbox-driven event backbone, and the explicit state machines that keep one buyer cart and many supplier sub-orders consistent with each other."
+      ]
+    },
+    {
+      "kind": "callout",
+      "tone": "insight",
+      "title": "One cart, many sub-orders",
+      "body": "The single buyer-facing cart is a UX promise; the per-supplier FulfillmentGroup is the engineering reality. Modeling that split early — instead of bolting it on once suppliers needed independent acceptance, shipping, and payout — is the decision the entire ordering, fulfillment, and settlement architecture rests on. Everything correctness-critical (price snapshots, credit checks, inventory holds, ledger entries) is anchored to the group, so that a buyer's one order and its many supplier sub-orders can never drift out of agreement on inventory or money."
+    }
+  ]
+}

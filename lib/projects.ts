@@ -224,8 +224,8 @@ public void onPlaced(OrderPlacedEvent e) {
     order: 2,
     year: 2025,
     period: "2025.05 ~ 2025.09",
-    role: "웹 1인 개발 (CJ AI 연구원 협업)",
-    teamSize: "웹 1명 (CJ AI 연구원 협업)",
+    role: "GIS·백엔드 개발 (4명 협업)",
+    teamSize: "4명 (본인 · 퍼블리셔 · 프론트엔드 · CJ AI 연구원)",
     deployment: "Docker · AWS (S3 · CloudFront)",
     capability: "기술 난이도 — GIS · GDAL · 대용량 이미지",
     focus:
@@ -249,11 +249,11 @@ aws s3 sync ./tiles s3://cj-gis/course/ --cache-control "max-age=31536000"
 #    L.tileLayer("https://cdn.example.com/course/{z}/{x}/{y}.png")`,
     },
     summary:
-      "골프장(나인브리지) 코스를 항공·위성 기반 지도로 관리하는 시스템. 수백 MB~수 GB의 GeoTIFF 원본을 서비스 가능한 지도 타일로 변환하는 파이프라인과 현장 작업 관리 CMS를 단독 개발했습니다.",
+      "골프장(나인브리지) 코스를 항공·위성 기반 지도로 관리하는 시스템. 수백 MB~수 GB의 GeoTIFF 원본을 서비스 가능한 지도 타일로 변환하는 파이프라인과 현장 작업 관리 CMS를 개발했습니다.",
     problem:
       "골프장 코스 관리에는 고해상도 항공/위성 이미지가 필요한데, GeoTIFF 원본은 수백 MB에서 수 GB라 그대로 웹에 띄울 수 없습니다. 좌표계가 제각각이라 지도 위에 정확히 얹으려면 변환이 필요하고, 코스·작업·병해 모니터링은 비개발자인 현장 운영자가 매일 다뤄야 했습니다.",
     constraints: [
-      "웹 파트 1인 개발 — CJ AI 연구원과 협업.",
+      "퍼블리셔·프론트엔드 개발자·CJ AI 연구원과 협업하는 4인 팀에서 GIS·백엔드 파트를 담당.",
       "대용량 GeoTIFF를 메모리에 통째로 올릴 수 없음.",
       "현장 운영자는 비개발자 — 코스·작업·모니터링을 관리자 CMS로 처리.",
     ],
@@ -344,8 +344,8 @@ aws s3 sync ./tiles s3://cj-gis/course/ --cache-control "max-age=31536000"
     order: 3,
     year: 2024,
     period: "2024.07 ~ 2025.06",
-    role: "주요 시스템 개발 (설계·기획 회의 참여)",
-    teamSize: "팀 협업 (주요 시스템 담당)",
+    role: "개발 리드 · 주요 시스템 개발 (4명)",
+    teamSize: "4명 (본인 리드 · 개발자 2 · 퍼블리셔 1)",
     deployment: "사내 인프라 배포",
     capability: "운영 서비스 — CMS · VOD · 정기결제",
     focus: "운영 중 콘텐츠 서비스의 결제·정기결제와 CMS를 끊김 없이 운영.",
@@ -372,10 +372,11 @@ public void runRecurringBilling() {
 }`,
     },
     summary:
-      "운영 중인 방송 콘텐츠 플랫폼 리뉴얼. VOD·패키지 다시보기, 이니시스 결제와 구독 정기결제 배치, 회원/CRM, 관리자 CMS, YouTube API 연동을 개발했습니다.",
+      "TV조선 계열 6개 사이트를 리뉴얼한 프로젝트. VOD·패키지 다시보기, 이니시스 결제와 구독 정기결제 배치, 회원/CRM, 관리자 CMS, YouTube API 연동을 개발하고, 개발자 2명·퍼블리셔 1명과 함께 개발을 리드했습니다.",
     problem:
       "이미 운영 중인 콘텐츠 서비스를 리뉴얼하면서 VOD 다시보기·유료 결제·구독 정기결제를 끊김 없이 제공해야 했습니다. 결제와 콘텐츠가 얽혀 있어 한쪽의 실패가 사용자 경험을 그대로 깨뜨릴 수 있었습니다.",
     constraints: [
+      "TV조선 계열 6개 사이트를 함께 리뉴얼하는 규모.",
       "운영 중 서비스 — 기존 사용자·콘텐츠를 유지하며 전환.",
       "이니시스 결제·YouTube API 등 외부 의존성을 전제.",
     ],

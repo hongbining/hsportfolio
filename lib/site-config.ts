@@ -233,7 +233,7 @@ export const siteConfig = {
     "8년 이상 경력의 풀스택 개발자 길홍석. Java·Spring Boot와 Next.js로 B2B 플랫폼, GIS 시스템, 콘텐츠 서비스, Enterprise CMS를 설계부터 운영까지 직접 수행했습니다.",
   /** 히어로 제목과 보조 문구. */
   headline:
-    "기업의 업무를 운영 가능한 시스템으로 구현하는 8년 이상 경력의 풀스택 개발자입니다.",
+    "기업의 다양한 업무 시스템을 설계하고 개발하며 비즈니스 가치를 만들어온 풀스택 개발자입니다.",
   subheadline:
     "B2B 플랫폼, GIS 시스템, 콘텐츠 서비스, Enterprise CMS를 설계부터 개발, 배포, 운영까지 직접 수행했습니다.",
   location: "서울",

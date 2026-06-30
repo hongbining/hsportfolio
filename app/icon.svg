@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <style>
+    .bg { fill: #0a0a0a; }
+    .fg { fill: #fafafa; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #fafafa; }
+      .fg { fill: #0a0a0a; }
+    }
+  </style>
+  <circle class="bg" cx="32" cy="32" r="32" />
+  <text
+    class="fg"
+    x="50%"
+    y="53%"
+    text-anchor="middle"
+    dominant-baseline="middle"
+    font-family="-apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif"
+    font-size="38"
+    font-weight="700"
+  >길</text>
+</svg>

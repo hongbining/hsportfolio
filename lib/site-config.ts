@@ -213,7 +213,7 @@ const experience: ExperienceItem[] = [
   {
     role: "IT (미국 뉴저지)",
     company: "BEAUTY PLUS (USA)",
-    period: "2016.10 ~ 2018.11",
+    period: "2016.10 ~ 2019.11",
     description:
       "무역회사 ERP 환경에서 IT 지원과 시스템 유지보수를 담당했습니다.",
     highlights: [

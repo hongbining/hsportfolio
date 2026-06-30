@@ -459,8 +459,8 @@ public void runRecurringBilling() {
     role: "개발 팀장 · 프론트·백엔드 기획·개발 (3명)",
     teamSize: "3명 (본인 팀장 · 개발자 1 · 퍼블리셔 1)",
     deployment: "사내 인프라 배포",
-    capability: "Enterprise CMS · 운영 자동화",
-    focus: "운영자가 매일 쓰는 관리자 CMS와 운영 자동화를 통합 설계.",
+    capability: "풀스택 리뉴얼 · 운영 자동화",
+    focus: "사용자 페이지(홈페이지)부터 관리자 CMS·운영 자동화까지 프론트·백엔드 전반을 리뉴얼.",
     focusType: "features",
     interviewQuestion:
       "관리자가 실제 사용하는 시스템을 설계할 때 어떤 점을 고려했나요?",
@@ -480,7 +480,7 @@ public void aggregateAndNotify() {
 }`,
     },
     summary:
-      "Spring Boot 기반 관리자 CMS와 운영 시스템 리뉴얼. 사용자/대리점 관리, 상담·통계, 알림톡/메일, 운영 자동화 구조를 설계해 관리 효율을 높였습니다.",
+      "휴그린 홈페이지 전체 리뉴얼. 사용자 페이지(홈페이지·'나만의 창작품' 등)부터 관리자 CMS·운영 시스템까지 프론트·백엔드 전반을 개발하고, 운영 자동화 구조를 설계해 관리 효율을 높였습니다.",
     problem:
       "관리자가 매일 쓰는 운영 시스템은 '기능이 많은 것'보다 '실수 없이 빠르게 처리되는 것'이 중요합니다. 사용자·대리점·상담·통계·발송이 흩어져 있어 운영 업무가 수작업으로 반복됐습니다.",
     constraints: [
@@ -512,6 +512,11 @@ public void aggregateAndNotify() {
       { icon: "notify", label: "알림톡 / 메일", tech: "고객 커뮤니케이션" },
     ],
     coreFeatures: [
+      {
+        title: "사용자 페이지 (홈페이지)",
+        detail:
+          "홈페이지 리뉴얼과 '나만의 창작품' 등 사용자 화면을 프론트·백엔드로 개발했습니다.",
+      },
       { title: "관리자 CMS", detail: "관리자 시스템을 설계·개발했습니다." },
       { title: "사용자/대리점 관리", detail: "대리점 시스템을 구축했습니다." },
       {

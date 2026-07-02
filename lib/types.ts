@@ -11,14 +11,6 @@ export interface NavItem {
   href: string
 }
 
-export type CapabilityKey = "architecture" | "delivery" | "leadership"
-
-export interface Capability {
-  key: CapabilityKey
-  title: string
-  description: string
-}
-
 export interface CoreStrength {
   /** lucide icon key. */
   icon: string
@@ -89,14 +81,6 @@ export interface ArchitectureNode {
   logo?: string
 }
 
-/** A short, highlighted snippet of the real core logic (~20 lines). */
-export interface CodeHighlight {
-  language: string
-  filename?: string
-  caption?: string
-  code: string
-}
-
 /**
  * A case study. Deliberately models engineering substance — the business
  * problem, the architecture, the decisions and their rationale, and the
@@ -140,8 +124,6 @@ export interface Project {
   architectureFlow: ArchitectureNode[]
   /** 구현 — core features built. */
   coreFeatures: CoreFeature[]
-  /** 코드 하이라이트 — the real core logic, ~20 lines. */
-  codeHighlight: CodeHighlight
   /** 트레이드오프 — choices and the costs accepted in exchange. */
   tradeoffs: TradeOff[]
   /** 트러블슈팅 — real production issues and how they were resolved. */

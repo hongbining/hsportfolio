@@ -17,31 +17,6 @@ const projects: Project[] = [
       "한 주문을 공급사별로 자동 분리하고, 인증 전에는 가격·재고를 감추는 B2B 워크플로 설계.",
     focusType: "features",
     interviewQuestion: "왜 이런 업무 흐름으로 설계했나요?",
-    codeHighlight: {
-      language: "java",
-      filename: "OrderService.java",
-      caption: "오버셀 방지(원자적 차감)와 외부 효과 분리(AFTER_COMMIT)의 핵심.",
-      code: `// 주문 확정: 재고는 단일 원자 UPDATE로 차감해 오버셀을 구조적으로 차단
-// SQL) UPDATE sku SET stock = stock - :qty WHERE id = :id AND stock >= :qty
-@Transactional
-public Order placeOrder(OrderCommand cmd) {
-  for (OrderLine line : cmd.getLines()) {
-    int updated = stockMapper.deduct(line.getSkuId(), line.getQty());
-    if (updated == 0) {                  // 갱신 0행 = 재고 부족
-      throw new OutOfStockException(line.getSkuId());
-    }
-  }
-  Order order = orderMapper.insert(cmd.toOrder());
-  // 메일·알림 등 외부 효과는 커밋 이후에만 (롤백 시 오발송 방지)
-  events.publishEvent(new OrderPlacedEvent(order.getId()));
-  return order;
-}
-
-@TransactionalEventListener(phase = AFTER_COMMIT)
-public void onPlaced(OrderPlacedEvent e) {
-  notifier.sendOrderConfirmed(e.orderId());
-}`,
-    },
     summary:
       "사업자 인증을 거친 회원만 거래하고, 비로그인 사용자에게는 도매가·재고를 노출하지 않는 건강기능식품 B2B 폐쇄몰. 주문·결제·배송·정산·세무까지 도매 전 과정을 혼자 설계·구현하고 Docker/GitLab CI로 배포·운영했습니다.",
     problem:
@@ -232,22 +207,6 @@ public void onPlaced(OrderPlacedEvent e) {
       "수 GB GeoTIFF를 서비스 가능한 지도 타일로 바꾸는 이미지 처리 아키텍처.",
     focusType: "architecture",
     interviewQuestion: "GeoTIFF를 어떻게 서비스 가능한 지도 형태로 변환했나요?",
-    codeHighlight: {
-      language: "bash",
-      filename: "tile-pipeline.sh",
-      caption: "수 GB GeoTIFF를 전처리 타일로 바꿔 조회 부하를 최소화.",
-      code: `# 1) GeoTIFF 원본을 표준 좌표계(EPSG:3857)로 재투영
-gdalwarp -t_srs EPSG:3857 -r bilinear course.tif course_3857.tif
-
-# 2) 보이는 영역만 받도록 줌 레벨별 타일로 분할
-gdal2tiles.py --zoom=14-21 --processes=4 course_3857.tif ./tiles
-
-# 3) 타일을 S3로 업로드 -> CloudFront로 캐싱/배포
-aws s3 sync ./tiles s3://cj-gis/course/ --cache-control "max-age=31536000"
-
-# 4) 브라우저는 Leaflet으로 타일만 받아 렌더
-#    L.tileLayer("https://cdn.example.com/course/{z}/{x}/{y}.png")`,
-    },
     summary:
       "골프장(나인브리지) 코스를 항공·위성 기반 지도로 관리하는 시스템. 수백 MB~수 GB의 GeoTIFF 원본을 서비스 가능한 지도 타일로 변환하는 파이프라인과 현장 작업 관리 CMS를 개발했습니다.",
     problem:
@@ -352,25 +311,6 @@ aws s3 sync ./tiles s3://cj-gis/course/ --cache-control "max-age=31536000"
     focusType: "features",
     interviewQuestion:
       "운영 중인 콘텐츠 서비스를 개발하면서 가장 어려웠던 점은 무엇이었나요?",
-    codeHighlight: {
-      language: "java",
-      filename: "RecurringBilling.java",
-      caption: "정기결제를 단건과 분리해 배치로 운영, 실패는 재시도 큐로.",
-      code: `// 구독 정기결제: 매일 새벽 배치로 만기 구독을 결제, 실패는 재시도 큐로 분리
-@Scheduled(cron = "0 0 4 * * *")
-public void runRecurringBilling() {
-  List<Subscription> due = subscriptionMapper.findDueToday();
-  for (Subscription sub : due) {
-    try {
-      PgResult r = inicis.bill(sub.getBillingKey(), sub.getAmount());
-      paymentMapper.insertSuccess(sub.getId(), r.getTid());
-      subscriptionMapper.extendNextDate(sub.getId());   // 다음 결제일로 연장
-    } catch (PgException e) {
-      retryQueue.enqueue(sub.getId(), e);               // 단건과 분리, 장애 전파 차단
-    }
-  }
-}`,
-    },
     summary:
       "TV조선 계열 6개 사이트를 리뉴얼한 프로젝트. VOD·패키지 다시보기, 이니시스 결제와 구독 정기결제 배치, 회원/CRM, 관리자 CMS, YouTube API 연동을 개발하고, 개발자 2명·퍼블리셔 1명과 함께 개발을 리드했습니다.",
     problem:
@@ -464,21 +404,6 @@ public void runRecurringBilling() {
     focusType: "features",
     interviewQuestion:
       "관리자가 실제 사용하는 시스템을 설계할 때 어떤 점을 고려했나요?",
-    codeHighlight: {
-      language: "java",
-      filename: "OpsAutomation.java",
-      caption: "흩어진 운영 업무를 배치·발송 자동화로 통합.",
-      code: `// 운영 자동화: 매일 통계를 집계하고 대리점 담당자에게 알림톡 발송
-@Scheduled(cron = "0 30 8 * * *")
-public void aggregateAndNotify() {
-  DailyStats stats = statsMapper.aggregateYesterday();
-  statsMapper.upsertDaily(stats);                       // 통계 테이블 갱신
-  for (Agency agency : agencyMapper.findActive()) {
-    AlimtalkTemplate t = templates.of("DAILY_REPORT", agency.getLocale());
-    alimtalk.send(agency.getManagerPhone(), t.render(stats.forAgency(agency)));
-  }
-}`,
-    },
     summary:
       "휴그린 홈페이지 전체 리뉴얼. 사용자 페이지(홈페이지·'나만의 창작품' 등)부터 관리자 CMS·운영 시스템까지 프론트·백엔드 전반을 개발하고, 운영 자동화 구조를 설계해 관리 효율을 높였습니다.",
     problem:

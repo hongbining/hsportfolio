@@ -1,5 +1,4 @@
 import type {
-  Capability,
   CoreStrength,
   ExperienceItem,
   NavItem,
@@ -32,27 +31,6 @@ const techStack: string[] = [
   "Docker",
   "AWS",
   "GitLab CI/CD",
-]
-
-const capabilities: Capability[] = [
-  {
-    key: "architecture",
-    title: "B2B 시스템 · 업무 프로세스 설계",
-    description:
-      "사업자 인증부터 주문·배송·정산까지, 실제 업무 흐름을 운영 가능한 시스템으로 설계합니다. (KH 폐쇄몰)",
-  },
-  {
-    key: "delivery",
-    title: "까다로운 · 대용량 기술",
-    description:
-      "GeoTIFF/GDAL 기반 GIS 이미지 파이프라인처럼 흔치 않은 문제를 끝까지 구현합니다. (CJ 골프장 GIS)",
-  },
-  {
-    key: "leadership",
-    title: "설계~운영 단독 책임 · 팀 리딩",
-    description:
-      "기획·개발·배포·운영을 혼자 책임지고, 개발 팀장으로 주요 프로젝트를 이끌었습니다.",
-  },
 ]
 
 const principles: Principle[] = [
@@ -253,7 +231,6 @@ export const siteConfig = {
   stats,
   heroKeywords,
   coreStrengths,
-  capabilities,
   principles,
   skills,
   experience,
